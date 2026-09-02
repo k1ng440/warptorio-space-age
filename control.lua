@@ -5,6 +5,7 @@ local map_gens = require("map_gens")
 local train_code = require("train")
 local platform_code = require("platforms")
 local warp_constant_combinator = require("warp_constant_combinator")
+local fluid_snapshot = require("modules.fluid_snapshot")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -335,6 +336,7 @@ local function on_init_or_load()
    ensure_surface_offset(storage.warptorio.warp_zone)
    starter_chest()
    warp_constant_combinator.init()
+   fluid_snapshot.update_cache()
 end
 
 local function pollution_settings()
@@ -1500,6 +1502,14 @@ local function teleport_ground(source, target)
   -- Snapshot trains before the clone: clone_brush resets them to manual mode.
   local captured_modes = train_code.capture_clone_states(game.surfaces[source], source_offset)
 
+  -- Pause all machines and snapshot their states. Prevents machines from consuming or
+  -- producing fluids during the clone, which would desync the fluid snapshot.
+  fluid_snapshot.snapshot_machine_states(game.surfaces[source], source_offset)
+
+  -- Snapshot fluid contents before clone to prevent mixing and extra fluid generation.
+  -- clone_brush rebalances fluids as each entity is cloned, creating duplicates.
+  fluid_snapshot.snapshot_fluids(game.surfaces[source], source_offset)
+
   -- Teleport base part
   game.surfaces[source].clone_brush({
     source_offset={source_offset.x, source_offset.y},
@@ -1513,6 +1523,51 @@ local function teleport_ground(source, target)
     clear_destination_decoratives=true,
     clone_decoratives=false,
   })
+
+  -- Restore fluids and machine states on cloned entities (handled by on_entity_cloned,
+  -- but fallback in case events fired synchronously or were missed).
+  local snap = fluid_snapshot.get_fluid_snapshot()
+  if next(snap) then
+    local dest_entities = game.surfaces[target].find_entities_filtered{
+      area = destination_area,
+      name = storage.warptorio.fluid_entity_types
+    }
+    for _, e in pairs(dest_entities) do
+      if e.valid and e.fluidbox and #e.fluidbox > 0 then
+        local rel_x = math.floor((e.position.x - dest_offset.x) * 10 + 0.5) / 10
+        local rel_y = math.floor((e.position.y - dest_offset.y) * 10 + 0.5) / 10
+        local key = string.format("%.1f,%.1f", rel_x, rel_y)
+        local boxes = snap[key]
+        if boxes then
+          for i, fluid_data in pairs(boxes) do
+            if e.fluidbox[i] then
+              e.fluidbox[i] = fluid_data
+            end
+          end
+        end
+      end
+    end
+    fluid_snapshot.clear_fluid_snapshot()
+  end
+
+  local mstates = fluid_snapshot.get_machine_states()
+  if next(mstates) then
+    local dest_machines = game.surfaces[target].find_entities_filtered{
+      area = destination_area
+    }
+    for _, e in pairs(dest_machines) do
+      if e.valid and e.active ~= nil then
+        local rel_x = math.floor((e.position.x - dest_offset.x) * 10 + 0.5) / 10
+        local rel_y = math.floor((e.position.y - dest_offset.y) * 10 + 0.5) / 10
+        local key = string.format("%.1f,%.1f", rel_x, rel_y)
+        local was_active = mstates[key]
+        if was_active ~= nil then
+          e.active = was_active
+        end
+      end
+    end
+    fluid_snapshot.clear_machine_states()
+  end
 
   train_code.restore_clone_states(game.surfaces[target], dest_offset, captured_modes)
   clean_ground_tiles(target, destination_area)
@@ -2471,6 +2526,43 @@ end)
 script.on_configuration_changed(function()
   on_init_or_load()
   warp_constant_combinator.rescan()
+  fluid_snapshot.update_cache()
+end)
+
+script.on_event(defines.events.on_entity_cloned, function(event)
+  local snap = fluid_snapshot.get_fluid_snapshot()
+  local mstates = fluid_snapshot.get_machine_states()
+  if not next(snap) and not next(mstates) then return end
+  local destination = event.destination
+  if not destination or not destination.valid then return end
+
+  local dest_surface = destination.surface
+  local dest_offset = get_surface_offset(dest_surface.name)
+  local rel_x = math.floor((destination.position.x - dest_offset.x) * 10 + 0.5) / 10
+  local rel_y = math.floor((destination.position.y - dest_offset.y) * 10 + 0.5) / 10
+  local key = string.format("%.1f,%.1f", rel_x, rel_y)
+
+  -- Restore fluid contents
+  if destination.fluidbox and #destination.fluidbox > 0 then
+    local boxes = snap[key]
+    if boxes then
+      for i, fluid_data in pairs(boxes) do
+        if destination.fluidbox[i] then
+          destination.fluidbox[i] = fluid_data
+        end
+      end
+      snap[key] = nil
+    end
+  end
+
+  -- Restore machine active state
+  if destination.active ~= nil then
+    local was_active = mstates[key]
+    if was_active ~= nil then
+      destination.active = was_active
+      mstates[key] = nil
+    end
+  end
 end)
 
 script.on_event(defines.events.script_raised_built, function(e)
