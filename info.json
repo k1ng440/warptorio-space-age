@@ -1,7 +1,7 @@
 {
 	"name": "warptorio-space-age",
-	"version": "0.4.3",
-	"title": "Warptorio 2.1 (Space Age)",
+	"version": "0.4.4",
+	"title": "Warptorio 2.1 (Space Age) (edge)",
 	"author": "Venca",
 	"dependencies": ["base >= 1.1","space-age","+quality","?Toxic_biters","?Electric_flying_enemies","?Explosive_biters", "?Cold_biters", "?ArmouredBiters", "!Gun_Turret_Alerts"],
 	"description": "Build your base on a platform that warps from planet to planet and escape bitters before they overwhelm you.",
