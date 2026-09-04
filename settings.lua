@@ -18,6 +18,10 @@ data:extend(
 	{type = "string-setting",name="warptorio_ground-tile",order="11b",
 	setting_type="startup",default_value="foundation"},
 
+	{type = "string-setting",name="warptorio_repair-speed",order="11b",
+	setting_type="startup",default_value="normal",
+	allowed_values={"slow","normal","fast"}},
+
 	{type="double-setting",name="warptorio_time-per-jump",order="11b",
 	setting_type="startup",default_value=1,
 	minimum_value=0.5,maximum_value=10},

@@ -4,6 +4,7 @@ local train_code = require("train")
 local platform_code = require("platforms")
 local warp_constant_combinator = require("warp_constant_combinator")
 local player_teleport = require("modules.player_teleport")
+local platform_animation = require("modules.platform_animation")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -326,11 +327,12 @@ local function on_init_or_load()
    storage.warptorio.time_level = storage.warptorio.time_level or 0
    storage.warptorio.wave_time = storage.warptorio.wave_time or 0
    storage.warptorio.wave_index = storage.warptorio.wave_index or 0
-   storage.warptorio.warp_out = storage.warptorio.warp_out or 0
-   storage.warptorio.surface_name = storage.warptorio.surface_name or "nauvis"
-   storage.warptorio.planet_timer = storage.warptorio.planet_timer or 0
-   storage.warptorio.planet_next = storage.warptorio.planet_next or nil
-   ensure_surface_positions()
+    storage.warptorio.warp_out = storage.warptorio.warp_out or 0
+    storage.warptorio.surface_name = storage.warptorio.surface_name or "nauvis"
+    storage.warptorio.planet_timer = storage.warptorio.planet_timer or 0
+    storage.warptorio.planet_next = storage.warptorio.planet_next or nil
+    storage.warptorio.game_over = storage.warptorio.game_over or false
+    ensure_surface_positions()
    ensure_surface_offset(storage.warptorio.warp_zone)
    starter_chest()
    warp_constant_combinator.init()
@@ -481,12 +483,16 @@ local function refresh_power_and_teleport(dest)
     storage.warptorio.power = storage.warptorio.power or {}
     storage.warptorio.power[1] = power_1
     storage.warptorio.power[2] = power_2
+    storage.warptorio.power_unit_number = storage.warptorio.power_unit_number or {}
+    storage.warptorio.power_unit_number[1] = power_1.unit_number
+    storage.warptorio.power_unit_number[2] = power_2.unit_number
 
     if storage.warptorio.biochamber_level then
         local power_3 = get_or_create(storage.warptorio.power_name,{x=0,y=0,surface="garden"})
         power_3.minable_flag = false
         power_3.rotatable = false
         storage.warptorio.power[3] = power_3
+        storage.warptorio.power_unit_number[3] = power_3.unit_number
         set_ground_tiles({y=-1,x=-3,tiles="blue-refined-concrete",surface="factory",size=1})
         set_ground_tiles({y=-1,x=1,tiles="red-refined-concrete",surface="factory",size=1})
         set_ground_tiles({y=-1,x=-3,tiles="red-refined-concrete",surface="garden",size=1})
@@ -879,6 +885,7 @@ end
 
 local function update_ground_platform(e)
   --game.print("Upgrading ground platform size")
+  local previous_level = storage.warptorio.ground_level
   local level = storage.warptorio.ground_level
   local dest = storage.warptorio.warp_zone
   if storage.warptorio.teleporting then
@@ -904,11 +911,41 @@ local function update_ground_platform(e)
 
   --remove_resources(storage.warptorio.warp_zone)
 
-  local tiles = generate_ground_shape(dest, platform*2,"warp_tile_world")
-  game.surfaces[dest].set_tiles(tiles)
   storage.warptorio.ground_level = level
   storage.warptorio.ground_size = platform*2
-  
+
+  local mode = (previous_level == level) and "repair" or "expand"
+  local offset = get_surface_offset(dest)
+  local center = {x = offset.x + 0.5, y = offset.y + 0.5}
+
+  -- cancel any running gradual repair before changing platform
+  if storage.warptorio.platform_rebuild_queue then
+    storage.warptorio.platform_rebuild_queue = nil
+  end
+
+  game.print({"warptorio.platform-animation-starting"})
+
+  if mode == "repair" then
+    local new_tiles = generate_ground_shape(dest, platform*2, "warp_tile_world")
+    platform_animation.start_gradual_repair(dest, new_tiles, center)
+  else
+    local tiles = generate_ground_shape(dest, platform*2,"warp_tile_world")
+    game.surfaces[dest].set_tiles(tiles)
+    local old_tiles = {}
+    if previous_level and previous_level > 0 then
+      local old_size = warp_settings.floor.levels[previous_level] * 2
+      old_tiles = generate_ground_shape(dest, old_size, "warp_tile_world")
+    end
+    local new_tiles = generate_ground_shape(dest, platform*2, "warp_tile_world")
+    platform_animation.animate_ground_platform(
+      game.surfaces[dest],
+      old_tiles,
+      new_tiles,
+      center,
+      mode
+    )
+  end
+
   -- warp belt ground	
   set_ground_tiles({x=-1,y=-6,tiles="hazard-concrete-left",surface=dest,size=1}) -- to factory
   set_ground_tiles({x=-1,y=4,tiles="hazard-concrete-left",surface=dest,size=1}) -- to factory
@@ -1774,6 +1811,7 @@ local function next_warp_zone_transition()
 end
 
 local function next_warp_zone()
+   if storage.warptorio.game_over then return end
    storage.warptorio.clicks_to_teleport = {}
    next_warp_zone_prepare()
    if storage.warptorio.factory_level >= warp_settings.space.trigger_factory_level and
@@ -1903,6 +1941,9 @@ local function update_nauvis_timer()
          storage.warptorio.nauvis_timer_render.destroy()
       end
       storage.warptorio.nauvis_timer_render = nil
+      return
+   end
+   if platform_animation.is_active() then
       return
    end
 
@@ -2103,9 +2144,22 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(e)
    end
 end)
 
+
+local function trigger_game_over()
+    if storage.warptorio.game_over then return end
+    storage.warptorio.game_over = true
+    game.print({"warptorio.capacitor-destroyed"})
+    game.set_lose_ending_info{title={"warptorio.lose-screen-title"}, message={"warptorio.lose-screen-text"}}
+    game.set_game_state{game_finished=true, player_won=false, can_continue=true}
+end
 script.on_event(defines.events.on_tick, function(event)
-  if not storage.warporio then
+if not storage.warporio then
      on_init_or_load()
+     return
+  end
+  if storage.warptorio.game_over then return end
+  if storage.warptorio.power and storage.warptorio.power[1] and not storage.warptorio.power[1].valid and not storage.warptorio.teleporting then
+     trigger_game_over()
      return
   end
   if event.tick % 60 == 0 then
@@ -2125,7 +2179,9 @@ script.on_event(defines.events.on_tick, function(event)
   update_nauvis_timer()
   platform_code.on_tick()
   on_tick_power()
-  
+  platform_animation.on_tick()
+  storage.warptorio.platform_animation_active = platform_animation.is_active()
+
   if storage.warptorio.transition_timer > 0 then
      storage.warptorio.transition_timer = storage.warptorio.transition_timer - 1
      next_warp_zone_transition()
@@ -2138,20 +2194,23 @@ script.on_event(defines.events.on_tick, function(event)
      storage.warptorio.transition_timer = storage.warptorio.transition_timer - 1
   end
   if storage.warptorio.ground_level > 0 or
-     storage.warporio.index > 0 then
-    if not technology_check() then
+      storage.warporio.index > 0 then
+    if not technology_check() and not storage.warptorio.platform_animation_active then
       storage.warptorio.time_passed = storage.warptorio.time_passed + 1/60
     end
     if storage.warptorio.warp_out > 0 then
-      storage.warptorio.warp_out = storage.warptorio.warp_out - 1/60
+      if not storage.warptorio.platform_animation_active then
+        storage.warptorio.warp_out = storage.warptorio.warp_out - 1/60
+      end
     else
       storage.warptorio.warp_out = 0
     end
   end
   local in_transition_period = storage.warptorio.transition_timer > -warp_settings.time.extra_transition_time*60
   if not storage.warptorio.planet_timer then storage.warptorio.planet_timer = 0
-  elseif storage.warptorio.warp_out <= 0 and not in_transition_period then
+  elseif storage.warptorio.warp_out <= 0 and not in_transition_period and not storage.warptorio.platform_animation_active then
     storage.warptorio.planet_timer = storage.warptorio.planet_timer + 1/60
+
     if storage.warptorio.planet_timer > warp_settings.planet_timer or storage.warptorio.planet_next == nil
         or (storage.warptorio.planet_next == storage.warptorio.warp_zone and storage.warptorio.planet_next ~= "nauvis") then
       storage.warptorio.planet_timer = 0
@@ -2241,10 +2300,14 @@ script.on_event(defines.events.on_gui_click, function(event)
        storage.warptorio.clicks_to_teleport = {}
     end
     if event.element.name == "warp_planet" then
-       if storage.warptorio.teleporting then
-          game.print({"warptorio.warp_in_progress"})
-          return
-       end
+        if storage.warptorio.game_over then
+           game.print({"warptorio.capacitor-destroyed"})
+           return
+        end
+        if storage.warptorio.teleporting then
+           game.print({"warptorio.warp_in_progress"})
+           return
+        end
        local amount = #game.forces["player"].connected_players
        if amount > 1 then
           local add = true
@@ -2274,12 +2337,17 @@ script.on_event(defines.events.on_gui_click, function(event)
           game.print({"warptorio.cooling-down"})
           return
         end
-       if technology_check() then
-          game.print({"warptorio.technology-check"})
-          return
-       end
-       
-       next_warp_zone()
+        if technology_check() then
+           game.print({"warptorio.technology-check"})
+           return
+        end
+        if platform_animation.is_active() then
+           game.print({"warptorio.platform-animation-in-progress"})
+           return
+        end
+
+        next_warp_zone()
+
     end
 end)
 
@@ -2402,25 +2470,24 @@ local techs = {
          game.set_game_state{game_finished=true,player_won=true,can_continue=true}
       end
    },
-   {
-      name = "warptorio%-platform%-repair",
-      func = function ()
-         --game.print("test")
-         update_ground_platform()
-      end
-   },   
+    {
+       name = "warptorio%-platform%-repair",
+       func = function (name)
+          update_ground_platform()
+       end
+    },   
 }
 
 script.on_event(defines.events.on_research_finished, function(e)
-    platform_code.on_research(e)
-    for _,v in ipairs(techs) do
-       if string.find(e.research.name, v.name) then
-          --game.print(e.research.name)
-          v.func(e.research.name)
-          return
-       end
-    end
+     platform_code.on_research(e)
+     for _,v in ipairs(techs) do
+        if string.find(e.research.name, v.name) then
+           v.func(e.research.name)
+           return
+        end
+     end
 end)
+
 
 script.on_event(defines.events.on_lua_shortcut, function(e)
     if e.prototype_name == "warptorio-teleport" then
@@ -2589,8 +2656,44 @@ script.on_event(defines.events.script_raised_revive, function(e)
   build_entity(e)
 end)
 
+local function is_warp_capacitor(entity)
+    if not storage.warptorio or not storage.warptorio.power then return false end
+    if not storage.warptorio.power_unit_number then
+        storage.warptorio.power_unit_number = {}
+        for i, power_entity in pairs(storage.warptorio.power) do
+            if power_entity and power_entity.valid then
+                storage.warptorio.power_unit_number[i] = power_entity.unit_number
+            end
+        end
+    end
+    if entity.unit_number then
+        for _, unit_number in pairs(storage.warptorio.power_unit_number) do
+            if unit_number == entity.unit_number then return true end
+        end
+    end
+    for _, power_entity in pairs(storage.warptorio.power) do
+        if power_entity == entity then return true end
+    end
+    return false
+end
+
+script.on_event(defines.events.on_entity_damaged, function(e)
+    if e.force ~= game.forces.player then return end
+    if e.entity.force ~= game.forces.player then return end
+    if not is_warp_capacitor(e.entity) then return end
+    local ok, max_health = pcall(function() return e.entity.prototype.max_health end)
+    if ok and max_health then
+        e.entity.health = max_health
+    else
+        e.entity.health = e.entity.health + e.final_damage_amount
+    end
+end)
+
 script.on_event(defines.events.on_entity_died, function(e)
     warp_constant_combinator.unregister(e.entity)
+    if storage.warptorio and storage.warptorio.power_unit_number and e.entity.unit_number == storage.warptorio.power_unit_number[1] then
+        trigger_game_over()
+    end
 end)
 
 script.on_event(defines.events.script_raised_destroy, function(e)
