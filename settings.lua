@@ -1,4 +1,3 @@
-
 data:extend(
 {
 	{type = "string-setting",name="warptorio_factory-tile",order="11b",
@@ -122,9 +121,12 @@ data:extend(
      default_value = "square",
      allowed_values = {"square","circle","hexagon"},
      order = "a1"
-  },
+},
   {type = "int-setting", name = "warptorio_teleport-delay", order = "a1",
    setting_type = "startup", default_value = 20,
-   minimum_value = 0, maximum_value = 600}
+   minimum_value = 0, maximum_value = 600},
+
+  {type = "bool-setting",name="warptorio-ground-minimap",order="a1",
+   setting_type="runtime-per-user",default_value=true}
 }
 )
