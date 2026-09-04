@@ -3,17 +3,14 @@ local map_gens = require("map_gens")
 local train_code = require("train")
 local platform_code = require("platforms")
 local warp_constant_combinator = require("warp_constant_combinator")
-<<<<<<< HEAD
 local player_teleport = require("modules.player_teleport")
 local platform_animation = require("modules.platform_animation")
-||||||| 51ddc5d
-=======
 local ok, warpcheat = pcall(require, "modules.warpcheat")
 if type(warpcheat) ~= "table" then
   log("[warpcheat] unavailable: " .. tostring(warpcheat))
   warpcheat = nil
 end
->>>>>>> origin/cheatcode
+local floor_garden = require("modules.floor_garden")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -2605,6 +2602,8 @@ script.on_event(defines.events.on_robot_mined_entity, function(e)
     end
     warp_constant_combinator.unregister(e.entity)
 end)
+
+floor_garden.setup()
 
 script.on_event(defines.events.on_research_started, function(e)
     if string.match(e.research.name, "warp") then
