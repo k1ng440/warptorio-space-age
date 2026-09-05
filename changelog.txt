@@ -1,4 +1,25 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.4
+Date: 2026-09-05
+  Changes:
+    - Added player eligibility filter for warps: new players (<1hr) and AFK players (>5min) cannot vote and don't count toward the vote threshold
+    - Admins now bypass votes but require 5 clicks within 2 seconds
+    - Player disconnect cleans all voting state to prevent phantom votes skewing the ratio
+    - Added new console command /warpcheat (whitelisted players only)
+    - Added speech bubble notifications for warp events
+    - Added platform reconstruction animation and capacitor fail state
+    - Added ground minimap shown while in factory/garden
+    - Added visual and audio effects to floor teleports (teleport.ogg arrival sound, startup setting for charge delay with progress bar)
+    - Added startup setting to change trail color
+    - Fixed garden issues
+    - Fixed train state during ground platform warp
+    - Fixed crash with `warp now` when warpcheat was not loading properly
+    - Fixed nukes creating lava on the platform
+    - Fixed clean_ground_tiles stripping leaked planet hazards (frozen-*, lava, etc.) after teleport
+    - Fixed player teleportation ignoring physical body during remote/map view
+    - Added fluid snapshot/restore
+    - Removed dead files
+---------------------------------------------------------------------------------------------------
 Version: 0.4.3
 Date: 2026-09-04
   Changes:
