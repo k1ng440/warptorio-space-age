@@ -2,8 +2,11 @@
 Version: 0.4.4
 Date: 2026-09-05
   Changes:
+    - Fix: failed warp attempts no longer leave stale votes, blocking future votes
+    - Warp voting now only starts when engine is available (no votes during cooldown / warp not available)
+    - Admins force warp with shift-double-click (no vote bypass during cooldown)
+    - Added speech bubbles for warp/teleport blocks, already-voted, and container/collector placement feedback (chat fallback when no character)
     - Added player eligibility filter for warps: new players (<1hr) and AFK players (>5min) cannot vote and don't count toward the vote threshold
-    - Admins now bypass votes but require 5 clicks within 2 seconds
     - Player disconnect cleans all voting state to prevent phantom votes skewing the ratio
     - Added new console command /warpcheat (whitelisted players only)
     - Added speech bubble notifications for warp events

@@ -26,6 +26,16 @@ function M.speak(entity, text, seconds)
   }
 end
 
+function M.notify(player, text, seconds, color)
+  if player and player.character and player.character.valid then
+    M.speak(player.character, text, seconds or 3)
+  elseif color then
+    game.print(text, {color=color})
+  else
+    game.print(text)
+  end
+end
+
 function M.clear(entity)
   if not (entity and entity.valid) then return end
   local id = entity.unit_number or entity

@@ -1258,7 +1258,9 @@ local function warp_gui(player)
    
    local frame = warpFrame.add{type = "frame",style="entity_frame", name="buttons",direction="vertical"}
    local warp_button = frame.add{type = "button", name="warp_planet", style="red_button", caption={"warptorio.button-warp"}}
-   if storage.warptorio.ground_level == 0 then
+   if player.admin then
+      warp_button.tooltip = {"warptorio.button-warp-admin"}
+   elseif storage.warptorio.ground_level == 0 then
       warp_button.tooltip = {"warptorio.warp-not-available"}
    end
    --frame.add{type = "button", name="go_home", style="green_button", caption="Home"}
@@ -1613,10 +1615,8 @@ local function next_warp_zone_prepare(forced)
     
     if storage.warptorio.container and storage.warptorio.container.destroy() then
        local player = game.players[1]
-       if player and player.connected and player.character and player.character.valid then
-          speech_bubbles.speak(player.character, {"warptorio.container-removed"}, 3)
-       else
-          game.print({"warptorio.container-removed"})
+       if player and player.connected then
+          speech_bubbles.notify(player, {"warptorio.container-removed"}, 3)
        end
        storage.warptorio.container = nil
     end
@@ -2406,28 +2406,7 @@ local element_name = (event.element and event.element.valid) and event.element.n
            return
         end
         if storage.warptorio.teleporting then
-           local player = game.players[event.player_index]
-           if player.character and player.character.valid then
-              speech_bubbles.speak(player.character, {"warptorio.warp_in_progress"}, 3)
-           else
-              game.print({"warptorio.warp_in_progress"})
-           end
-           return
-        end
-       local result, arg1, arg2 = warp_vote.process_vote(event.player_index)
-       if result == "afk" then
-          game.print({"warptorio.afk-player-warp",arg1},{color={1,0,0}})
-          return
-       elseif result == "too_young" then
-          game.print({"warptorio.new-player-warp",arg1},{color={1,0,0}})
-          return
-       elseif result == "already_voted" then
-          return
-       elseif result == "admin_clicks" then
-          game.print({"warptorio.admin-clicks",arg1,arg2},{color={1,1,0}})
-          return
-       elseif result == "need_votes" then
-           game.print({"warptorio.player-warp",arg1,arg2},{color={1,1,0}})
+           speech_bubbles.notify(game.players[event.player_index], {"warptorio.warp_in_progress"}, 3)
            return
         end
        if storage.warptorio.ground_level == 0 then
@@ -2445,22 +2424,47 @@ local element_name = (event.element and event.element.valid) and event.element.n
           return
        end
 if storage.warptorio.warp_out > 0 then
-          local player = game.players[event.player_index]
-          if player.character and player.character.valid then
-             speech_bubbles.speak(player.character, {"warptorio.cooling-down"}, 3)
-          else
-             game.print({"warptorio.cooling-down"})
+           speech_bubbles.notify(game.players[event.player_index], {"warptorio.cooling-down"}, 3)
+           return
+        end
+        if technology_check() then
+           speech_bubbles.notify(game.players[event.player_index], {"warptorio.technology-check"}, 4)
+           return
+        end
+        if platform_animation.is_active() then
+           speech_bubbles.notify(game.players[event.player_index], {"warptorio.platform-animation-in-progress"}, 4)
+           return
+        end
+
+       local player = game.players[event.player_index]
+       if player and player.admin and event.shift then
+          if not storage.warptorio.admin_shift then
+             storage.warptorio.admin_shift = {}
           end
+          local last = storage.warptorio.admin_shift[player_index]
+          if not last or (game.tick - last) > 60 then
+             storage.warptorio.admin_shift[player_index] = game.tick
+             return
+          end
+          storage.warptorio.admin_shift[player_index] = nil
+          next_warp_zone()
           return
        end
-       if technology_check() then
-          game.print({"warptorio.technology-check"})
+
+       local result, arg1, arg2 = warp_vote.process_vote(event.player_index)
+       if result == "afk" then
+          game.print({"warptorio.afk-player-warp",arg1},{color={1,0,0}})
           return
-       end
-       if platform_animation.is_active() then
-          game.print({"warptorio.platform-animation-in-progress"})
+       elseif result == "too_young" then
+          game.print({"warptorio.new-player-warp",arg1},{color={1,0,0}})
           return
-       end
+       elseif result == "already_voted" then
+          speech_bubbles.notify(player, {"warptorio.already-voted"}, 3)
+          return
+       elseif result == "need_votes" then
+           game.print({"warptorio.player-warp",arg1,arg2},{color={1,1,0}})
+           return
+        end
 
        next_warp_zone()
 
@@ -2506,25 +2510,25 @@ local function build_entity(e)
    end
    if e.entity.name == "warp_2x2-container" then
        if storage.warptorio.container and storage.warptorio.container.valid then
-          game.print({"warptorio.container-placed-error"},{color={1,0,0}})
+          speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.container-placed-error"}, 4, {1,0,0})
           e.entity.destroy()
           return
        else
-          game.print({"warptorio.container-placed"})
+          speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.container-placed"}, 4)
        end
        storage.warptorio.container = e.entity
     end
     if e.entity.name == "warp-asteroid-chest" then
        if storage.warptorio.collector_chest and storage.warptorio.collector_chest.valid then
-          game.print({"warptorio.collector-placed-error"},{color={1,0,0}})
+          speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.collector-placed-error"}, 4, {1,0,0})
           e.entity.destroy()
           return
        elseif e.entity.surface.name ~= "factory" and e.entity.surface.name ~= "garden" then
-          game.print({"warptorio.placed-error-surface"},{color={1,0,0}})
+          speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.placed-error-surface"}, 4, {1,0,0})
           e.entity.destroy()
-          return          
+          return
        else
-          game.print({"warptorio.collector-placed"})
+          speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.collector-placed"}, 4)
           storage.warptorio.collector_chest = e.entity
        end
     end
@@ -2624,7 +2628,7 @@ script.on_event(defines.events.on_lua_shortcut, function(e)
          player_teleport.teleport_effect(from_surface, from_position)
          player_teleport.teleport_effect(game.surfaces["factory"], player_pos)
       else
-         game.print({"warptorio.teleport-not-available"})
+         speech_bubbles.notify(game.players[e.player_index], {"warptorio.teleport-not-available"}, 4)
       end
     end
     if e.prototype_name == "warptorio-ground-minimap-toggle" then
@@ -2662,12 +2666,7 @@ end)
 
 script.on_event(defines.events.on_player_mined_entity, function(e)
     if e.entity.name == "warp_2x2-container" then
-       local player = game.players[e.player_index]
-       if player.character and player.character.valid then
-          speech_bubbles.speak(player.character, {"warptorio.container-removed"}, 3)
-       else
-          game.print({"warptorio.container-removed"})
-       end
+       speech_bubbles.notify(game.players[e.player_index], {"warptorio.container-removed"}, 3)
        storage.warptorio.container = nil
     end
     warp_constant_combinator.unregister(e.entity)
@@ -2676,10 +2675,8 @@ end)
 script.on_event(defines.events.on_robot_mined_entity, function(e)
     if e.entity.name == "warp_2x2-container" then
        local player = game.players[1]
-       if player and player.connected and player.character and player.character.valid then
-          speech_bubbles.speak(player.character, {"warptorio.container-removed"}, 3)
-       else
-          game.print({"warptorio.container-removed"})
+       if player and player.connected then
+          speech_bubbles.notify(player, {"warptorio.container-removed"}, 3)
        end
        storage.warptorio.container = nil
     end

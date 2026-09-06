@@ -25,31 +25,6 @@ end
 
 function M.process_vote(player_index)
     local player = game.get_player(player_index)
-    if player and player.admin then
-        if not storage.warptorio.admin_clicks then
-            storage.warptorio.admin_clicks = {}
-        end
-        if not storage.warptorio.admin_click_start then
-            storage.warptorio.admin_click_start = {}
-        end
-        local clicks = storage.warptorio.admin_clicks
-        local starts = storage.warptorio.admin_click_start
-        if not clicks[player_index] or (game.tick - starts[player_index]) > 6 then
-            clicks[player_index] = 0
-            starts[player_index] = game.tick
-        end
-        clicks[player_index] = clicks[player_index] + 1
-        if clicks[player_index] >= 2 then
-            local needed = warp_settings.time.admin_clicks_required - (clicks[player_index] - 2)
-            if needed <= 0 then
-                clicks[player_index] = 0
-                starts[player_index] = game.tick
-                return "proceed"
-            end
-            return "admin_clicks", player.name, needed
-        end
-    end
-
     if not storage.warptorio.clicks_to_teleport then
         storage.warptorio.clicks_to_teleport = {}
     end
@@ -102,12 +77,6 @@ function M.cleanup_player(player_index)
                 table.remove(storage.warptorio.clicks_to_teleport, i)
             end
         end
-    end
-    if storage.warptorio.admin_clicks then
-        storage.warptorio.admin_clicks[player_index] = nil
-    end
-    if storage.warptorio.admin_click_start then
-        storage.warptorio.admin_click_start[player_index] = nil
     end
 end
 
