@@ -21,7 +21,7 @@ end
 data:extend{{
    type = "sound",
    name = "warptorio-teleport",
-   filename = "__warptorio-space-age__/sounds/teleport.ogg",
+   filename = "__warptorio-space-age-edge__/sounds/teleport.ogg",
    volume = 1.0,
    audible_distance_modifier = 2,
 }}

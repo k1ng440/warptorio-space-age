@@ -144,7 +144,7 @@ for i=2,#triggers do
 end
 
 local t = table.deepcopy(data.raw["technology"]["rocket-silo"])
-t.icons = {{icon="__warptorio-space-age__/graphics/destinations/asteroid.png",icon_size=128,}}
+t.icons = {{icon="__warptorio-space-age-edge__/graphics/destinations/asteroid.png",icon_size=128,}}
 t.hidden =false
 t.localised_name = nil
 ExtendTech(t,{
@@ -153,7 +153,7 @@ ExtendTech(t,{
   prerequisites={"warp-ground-platform-7","warp-factory-platform-5","warp-time-4","warp-biochamber-platform-2","railgun"},
   effects={{recipe = "warp-promethium",type = "unlock-recipe"}}})
 local t = table.deepcopy(data.raw["technology"]["rocket-silo"])
-t.icons = {{icon="__warptorio-space-age__/graphics/locations/black-hole.png",icon_size=256,}}
+t.icons = {{icon="__warptorio-space-age-edge__/graphics/locations/black-hole.png",icon_size=256,}}
 t.hidden =false
 t.localised_name = nil
 ExtendTech(t,{name="warp-end-win",unit={count=25000,ingredients = SciencePacks({red=1,green=1,blue=1,purple=1,yellow=1,white=1,vulcanus=1,fulgora=1,aquilo=1,gleba=1,final=1}),time=240}, prerequisites={"warp-end-prepare"},effects={}})

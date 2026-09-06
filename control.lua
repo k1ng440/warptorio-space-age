@@ -1282,6 +1282,38 @@ function update_label(label_name,text,is_label)
    end
 end
 
+local function technology_check()
+  if storage.warptorio and storage.warptorio.transition_timer and storage.warptorio.transition_timer > 60 then return false end
+  if not game.forces["player"].current_research then return false end
+  if game.forces["player"].current_research.name == "warp-end-prepare" or game.forces["player"].current_research.name == "warp-end-win" then
+    return true
+  end
+  return false
+end
+
+local function update_warp_button_tooltip()
+   local tip = nil
+   if storage.warptorio.ground_level == 0 then
+      tip = {"warptorio.warp-not-available"}
+   elseif storage.warptorio.warp_out > 0 then
+      tip = {"warptorio.cooling-down"}
+   elseif technology_check() then
+      tip = {"warptorio.technology-check"}
+   elseif platform_animation.is_active() then
+      tip = {"warptorio.platform-animation-in-progress"}
+   end
+   local warp_button_tooltip = tip
+   for _, player in pairs(game.players) do
+      if not player.gui.top[warp_settings.gui.holder] then
+         warp_gui(player)
+      end
+      local button = player.gui.top[warp_settings.gui.holder]["buttons"]["warp_planet"]
+      if button then
+         button.tooltip = warp_button_tooltip
+      end
+   end
+end
+
 local function update_all_labels()
 
   local time_limit = warp_settings.time.round + (warp_settings.time.round*storage.warptorio.time_level)
@@ -1307,18 +1339,10 @@ local function update_all_labels()
         next_planet = "[color=red]" .. storage.warptorio.planet_next .. "[/color]"
      end
      update_label("next-planet", next_planet)
-  else
-     update_label("next-planet",{"warptorio.gui-unknown-planet"})
-  end
-end
-
-local function technology_check()
-  if storage.warptorio and storage.warptorio.transition_timer and storage.warptorio.transition_timer > 60 then return false end
-  if not game.forces["player"].current_research then return false end
-  if game.forces["player"].current_research.name == "warp-end-prepare" or game.forces["player"].current_research.name == "warp-end-win" then
-    return true
-  end
-  return false
+else
+      update_label("next-planet",{"warptorio.gui-unknown-planet"})
+   end
+   update_warp_button_tooltip()
 end
 
 local function spawn_boss_check()

@@ -66,8 +66,8 @@ local shortcut = {
   type="shortcut",
   name="warptorio-teleport",
   action="lua",
-  icon="__warptorio-space-age__/graphics/home.png",
-  small_icon="__warptorio-space-age__/graphics/home.png"
+  icon="__warptorio-space-age-edge__/graphics/home.png",
+  small_icon="__warptorio-space-age-edge__/graphics/home.png"
 }
 data:extend{shortcut}
 
@@ -77,8 +77,8 @@ local minimap_shortcut = {
   name="warptorio-ground-minimap-toggle",
   action="lua",
   toggleable=true,
-  icon="__warptorio-space-age__/graphics/map.png",
-  small_icon="__warptorio-space-age__/graphics/map.png"
+  icon="__warptorio-space-age-edge__/graphics/map.png",
+  small_icon="__warptorio-space-age-edge__/graphics/map.png"
 }
 data:extend{minimap_shortcut}
 
@@ -350,26 +350,26 @@ support.support_range = support.support_range * 3
 data:extend{{
       type = "sound",
       name = "warp-start",
-      filename = "__warptorio-space-age__/sounds/warp_start.wav",
+      filename = "__warptorio-space-age-edge__/sounds/warp_start.wav",
       category = "environment",
 }}
 
 data:extend{{
       type = "sound",
       name = "warp-end",
-      filename = "__warptorio-space-age__/sounds/warp_end.wav",
+      filename = "__warptorio-space-age-edge__/sounds/warp_end.wav",
       category = "environment",
 }}
 data:extend{{
       type = "sound",
       name = "planet-change",
-      filename = "__warptorio-space-age__/sounds/planet_change.wav",
+      filename = "__warptorio-space-age-edge__/sounds/planet_change.wav",
       category = "alert",
 } }
 data:extend{{
       type = "sound",
       name = "boss-spawn",
-      filename = "__warptorio-space-age__/sounds/boss_spawn.wav",
+      filename = "__warptorio-space-age-edge__/sounds/boss_spawn.wav",
       category = "alert",
 }}
 
@@ -485,7 +485,7 @@ data.extend({
       color = {194, 54, 22},
       order = "f",
       subgroup = "qualities",
-      icon = "__warptorio-space-age__/graphics/quality.png",
+      icon = "__warptorio-space-age-edge__/graphics/quality.png",
       beacon_power_usage_multiplier = 1,
       mining_drill_resource_drain_multiplier = 1,
       hidden_in_factoriopedia = true,
