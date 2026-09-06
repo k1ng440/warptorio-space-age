@@ -42,8 +42,26 @@ local function default_ground_minimap_location(player)
   local scale = player.display_scale
   return {
     x = player.display_resolution.width - (ground_minimap_size + 12) * scale,
-    y = player.display_resolution.height - (ground_minimap_size + 12) * scale - 80 * scale,
+    y = 8 * scale,
   }
+end
+
+local function manage_builtin_minimap(player, on_interior)
+  local view = player.game_view_settings
+  if not view or view.minimap_enabled == nil then return end
+  if on_interior then
+    if view.minimap_enabled then
+      storage.warptorio.minimap_saved = storage.warptorio.minimap_saved or {}
+      storage.warptorio.minimap_saved[player.index] = true
+      view.minimap_enabled = false
+    end
+  else
+    local saved = storage.warptorio.minimap_saved and storage.warptorio.minimap_saved[player.index]
+    if saved ~= nil then
+      storage.warptorio.minimap_saved[player.index] = nil
+      view.minimap_enabled = saved
+    end
+  end
 end
 
 local function sync_ground_minimap(player)
@@ -63,6 +81,7 @@ local function sync_ground_minimap(player)
   end
 
   if not enabled or not toggled then
+    manage_builtin_minimap(player, false)
     if frame then frame.destroy() end
     return
   end
@@ -71,6 +90,8 @@ local function sync_ground_minimap(player)
   local on_interior = player.connected and
     player.controller_type == defines.controllers.character and
     is_interior_floor(player.surface.name) and ground ~= nil
+
+  manage_builtin_minimap(player, on_interior)
 
   if not on_interior then
     if frame then frame.visible = false end

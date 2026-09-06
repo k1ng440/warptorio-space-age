@@ -1614,7 +1614,7 @@ local function create_space_platform()
   end
 end
 
-local function next_warp_zone_prepare(forced)
+local function next_warp_zone_prepare(forced, go_home)
     --if true then return end
     storage.warptorio.teleporting = true
     if not storage.warporio then storage.warporio = {} end
@@ -1648,9 +1648,13 @@ local function next_warp_zone_prepare(forced)
     local name = "warpzone_"..storage.warporio.index
     local surface = nil
     if forced == "nauvis" then
-       surface = new_random_surface("home")
-       storage.warptorio.previous_surface_2 = nil
-       storage.warptorio.previous_surface_1 = nil
+       if go_home then
+          surface = new_random_surface("home")
+       else
+          storage.warptorio.previous_surface_2 = nil
+          storage.warptorio.previous_surface_1 = nil
+          surface = new_random_surface(name)
+       end
     elseif forced == "space" then
        surface = new_random_surface("space")
        storage.warptorio.previous_surface_2 = nil
@@ -1895,7 +1899,7 @@ local function next_warp_zone_transition()
       end]]
 end
 
-local function force_warp(destination)
+local function force_warp(destination, go_home)
    if destination and destination ~= "nauvis" and destination ~= "void" and destination ~= "space"
       and not game.planets[destination] then
       game.print("ERORR:Unknown force warp destination: "..tostring(destination))
@@ -1909,7 +1913,7 @@ local function force_warp(destination)
    storage.warptorio.transition_timer = 0
    storage.warptorio.force_direct = true
    storage.warptorio.clicks_to_teleport = {}
-   next_warp_zone_prepare(destination)
+   next_warp_zone_prepare(destination, go_home)
    storage.warptorio.transition_timer = -1
    next_warp_zone_finish()
    storage.warptorio.force_direct = nil

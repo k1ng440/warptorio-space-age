@@ -25,3 +25,9 @@ data:extend{{
    volume = 1.0,
    audible_distance_modifier = 2,
 }}
+
+for _, prototypes in pairs(data.raw) do
+   if prototypes["fulgoran-ruin-attractor"] then
+      prototypes["fulgoran-ruin-attractor"].alert_when_damaged = false
+   end
+end

@@ -124,10 +124,6 @@ local function warpcheat_gui(player)
     if idx > 0 then dd.selected_index = idx end
   end
 
-  action_button(left, "warpcheat-warp", "Warp now", "red_button")
-  action_button(left, "warpcheat-warp-selected", "Warp to selected", "yellow_button")
-  action_button(left, "warpcheat-warp-home", "Force home (Nauvis)", "green_button")
-
   local variantrow, vdd = field_row(left, "warpcheat-variant", "Map variant")
   vdd.add_item("auto")
   if type(env.map_variants) == "table" then
@@ -143,6 +139,10 @@ local function warpcheat_gui(player)
     end
   end
   if vidx > 0 then vdd.selected_index = vidx end
+
+  action_button(left, "warpcheat-warp", "Warp now", "red_button")
+  action_button(left, "warpcheat-warp-selected", "Warp to selected", "button")
+  action_button(left, "warpcheat-warp-home", "Force home (Nauvis)", "green_button")
 
   subheader(left, "Location")
   local telrow = left.add{type="flow", direction="horizontal"}
@@ -242,7 +242,7 @@ function module.handle_click(event)
       player.print({"warptorio.warp_in_progress"})
       return
     end
-    env.force_warp("nauvis")
+    env.force_warp("nauvis", true)
     player.print("Force warping home to Nauvis")
   elseif name == "warpcheat-count-apply" then
     local root = player.gui.screen["warpcheat"]

@@ -97,6 +97,7 @@ local local_settings = {
      ["gun-turret"]=4,["firearm-magazine"]=400,
   },
   platforms = {
+       loot_force = "warptorio-loot",
        loot_items = internal_loot(),
        save_triggers = {
           "warp-ground-platform-2",

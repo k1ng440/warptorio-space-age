@@ -8,6 +8,21 @@ local warptorio_test = {
 
 local zero_offset = {x=0, y=0}
 
+local function ensure_loot_force()
+   if not game.forces[warp_settings.platforms.loot_force] then
+      game.create_force(warp_settings.platforms.loot_force)
+   end
+   local loot = game.forces[warp_settings.platforms.loot_force]
+   local player = game.forces.player
+   player.set_cease_fire(warp_settings.platforms.loot_force, true)
+   player.set_friend(warp_settings.platforms.loot_force, true)
+   loot.set_cease_fire("player", true)
+   loot.set_friend("player", true)
+   loot.set_cease_fire("enemy", false)
+   game.forces.enemy.set_cease_fire(warp_settings.platforms.loot_force, false)
+   return loot
+end
+
 local function get_surface_offset(surface_name)
   if storage.warptorio and storage.warptorio.surface_positions then
     return storage.warptorio.surface_positions[surface_name] or zero_offset
@@ -212,7 +227,9 @@ function module.spawn(name,x,y)
    local center = nil
    local level = storage.warptorio.ground_level or 1
    local chests = {}
+   local spawned_entities = {}
    game.surfaces[storage.warptorio.warp_zone].set_tiles(tiles)
+   ensure_loot_force()
    for i, v in ipairs(platform.entities) do
       if v == nil or v.name == nil or prototypes.entity[v.name] == nil then
          goto continue
@@ -222,11 +239,12 @@ function module.spawn(name,x,y)
             { name = v.name,
               position = {x=v.position.x+x,y=v.position.y+y},
               direction = v.direction,
-              force = game.forces.player,
+              force = warp_settings.platforms.loot_force,
               quality = v.quality
             }
          )
          table.insert(chests,entity)
+         table.insert(spawned_entities,entity)
       else
          if v.name == "warp-power" or v.name == "warp-power-2" or v.name == "warp-power-3" then
             local entity = game.surfaces[storage.warptorio.warp_zone].create_entity(
@@ -235,6 +253,7 @@ function module.spawn(name,x,y)
                  direction = v.direction,
                  force = game.forces.enemy})
             center = entity
+            table.insert(spawned_entities,entity)
          elseif v.name ~= "entity-ghost" and prototypes.item[v.name] then
             local entity = game.surfaces[storage.warptorio.warp_zone].create_entity(
                { name = v.name,
@@ -242,6 +261,7 @@ function module.spawn(name,x,y)
                  direction = v.direction,
                  force = game.forces.enemy,
                  quality = v.quality})
+            table.insert(spawned_entities,entity)
             for _,weapon in ipairs(warp_settings.platforms.weapons) do
                if v.name == weapon.name then
                   if weapon.fluid then
@@ -260,6 +280,7 @@ function module.spawn(name,x,y)
       -- TODO add sound
       game.print({"warptorio.platform-spawn"})
       storage.warptorio.current_platforms.platform = tiles
+      storage.warptorio.current_platforms.entities = spawned_entities
       storage.warptorio.current_platforms.surface = storage.warptorio.warp_zone
    end
    local max = math.min(warp_settings.platforms.chests,#chests)
@@ -334,12 +355,23 @@ function module.delete()
     if not storage.warptorio.current_platforms then
        return
     end
-    for _,v in ipairs(storage.warptorio.current_platforms.platform) do
-       v.name = "empty-space"
+    local current = storage.warptorio.current_platforms
+    if current.entities then
+        for _,e in ipairs(current.entities) do
+            if e and e.valid then
+                e.destroy()
+            end
+        end
     end
-    game.surfaces[storage.warptorio.current_platforms.surface].set_tiles(
-       storage.warptorio.current_platforms.platform)
-    storage.warptorio.current_platforms.platform = nil
+    current.entities = nil
+    if current.platform then
+        for _,v in ipairs(current.platform) do
+           v.name = "empty-space"
+        end
+        game.surfaces[current.surface].set_tiles(
+           current.platform)
+        current.platform = nil
+    end
 end
 
 return module
