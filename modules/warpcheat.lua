@@ -105,11 +105,18 @@ local function warpcheat_gui(player)
   apply.style.minimal_height = 24
 
   local planetrow, dd = field_row(left, "warpcheat-planet", "Next planet")
+  dd.add_item("void")
+  dd.add_item("space")
+  local planet_items = {}
   for name, _ in pairs(game.planets) do
+    table.insert(planet_items, name)
+  end
+  table.sort(planet_items)
+  for _, name in ipairs(planet_items) do
     dd.add_item(name)
   end
   local cur = storage.warptorio.planet_next
-  if cur and game.planets[cur] then
+  if cur then
     local idx = 0
     for k, name in ipairs(dd.items) do
       if name == cur then idx = k break end
@@ -118,7 +125,24 @@ local function warpcheat_gui(player)
   end
 
   action_button(left, "warpcheat-warp", "Warp now", "red_button")
+  action_button(left, "warpcheat-warp-selected", "Warp to selected", "yellow_button")
   action_button(left, "warpcheat-warp-home", "Force home (Nauvis)", "green_button")
+
+  local variantrow, vdd = field_row(left, "warpcheat-variant", "Map variant")
+  vdd.add_item("auto")
+  if type(env.map_variants) == "table" then
+    for _, v in ipairs(env.map_variants) do
+      vdd.add_item(v)
+    end
+  end
+  local cur_variant = storage.warptorio.forced_variant
+  local vidx = cur_variant and 0 or 1
+  if cur_variant then
+    for k, name in ipairs(vdd.items) do
+      if name == cur_variant then vidx = k break end
+    end
+  end
+  if vidx > 0 then vdd.selected_index = vidx end
 
   subheader(left, "Location")
   local telrow = left.add{type="flow", direction="horizontal"}
@@ -189,6 +213,30 @@ function module.handle_click(event)
     end
     env.force_warp()
     player.print("Warping, ignoring cooldown and space transition")
+  elseif name == "warpcheat-warp-selected" then
+    if storage.warptorio.teleporting then
+      player.print({"warptorio.warp_in_progress"})
+      return
+    end
+    local root = player.gui.screen["warpcheat"]
+    local dd = root and find_child(root, "warpcheat-planet")
+    if not dd then return end
+    local idx = dd.selected_index
+    local target = idx and dd.get_item(idx)
+    if not target then
+      player.print("No destination selected")
+      return
+    end
+    if target ~= "void" and target ~= "space" and not game.planets[target] then
+      player.print("Unknown destination: " .. target)
+      return
+    end
+    env.force_warp(target)
+    if target == "nauvis" then
+      player.print("Force warping home to Nauvis")
+    else
+      player.print("Force warping to " .. target)
+    end
   elseif name == "warpcheat-warp-home" then
     if storage.warptorio.teleporting then
       player.print({"warptorio.warp_in_progress"})
@@ -289,25 +337,42 @@ end
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
   local element = event.element
-  if not element or element.name ~= "warpcheat-planet" then return end
+  if not element or (element.name ~= "warpcheat-planet" and element.name ~= "warpcheat-variant") then return end
   if not event.player_index then return end
   local player = game.players[event.player_index]
   if not player.admin then return end
   local idx = element.selected_index
   if not idx then return end
   local selected = element.get_item(idx)
-  if selected and game.planets[selected] then
-    storage.warptorio.planet_next = selected
-    player.print("Next planet set to " .. selected)
+  if selected and (game.planets[selected] or selected == "void" or selected == "space") then
+    if selected ~= "space" then
+      storage.warptorio.planet_next = selected
+    end
+    player.print("Next destination set to " .. selected)
+  end
+  if element.name == "warpcheat-variant" then
+    if selected == "auto" then
+      storage.warptorio.forced_variant = nil
+      player.print("Map variant: auto (random)")
+    elseif type(env.map_variants) == "table" then
+      local valid = false
+      for _, v in ipairs(env.map_variants) do
+        if v == selected then valid = true break end
+      end
+      if valid then
+        storage.warptorio.forced_variant = selected
+        player.print("Map variant forced to " .. selected)
+      else
+        player.print("Unknown map variant: " .. tostring(selected))
+      end
+    end
   end
 end)
 
-local warpcheat_whitelist = {["Venca123"] = true, ["k1ng440"] = true}
-
-commands.add_command("warpcheat", "Open the warptorio cheat control popup (whitelist only)", function(cmd)
+commands.add_command("warpcheat", "Open the warptorio cheat control popup (admin only)", function(cmd)
   if not cmd.player_index then return end
   local player = game.players[cmd.player_index]
-  if not warpcheat_whitelist[player.name] or not player.admin then
+  if not player.admin then
     player.print("You are not authorized to use this command.")
     return
   end

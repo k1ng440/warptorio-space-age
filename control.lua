@@ -13,6 +13,7 @@ end
 local floor_garden = require("modules.floor_garden")
 local warp_vote = require("modules.warp_vote")
 local speech_bubbles = require("modules.speech_bubbles")
+local minimap = require("modules.minimap")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -625,22 +626,26 @@ local function new_random_surface(name)
   
   local surface_name = storage.warptorio.planet_next ~= "void" and storage.warptorio.planet_next or "nauvis"
   if name == "garden" or name == "space" then 
-    surface_name = "nauvis"
+     surface_name = "nauvis"
   end
-  storage.warptorio.surface_name = storage.warptorio.planet_next
+  if name ~= "garden" then
+     storage.warptorio.surface_name = storage.warptorio.planet_next
+  end
   local map_gen = nil
   map_gen = game.planets[surface_name].prototype.map_gen_settings
   storage.warptorio.allow_random_spawn = true
 
   if (storage.warptorio.planet_next == "void" and name ~= "space") or name == "garden" then
-      map_gen = my_map_gen_settings
-      storage.warptorio.void = true
-      storage.warptorio.allow_random_spawn = false
+     map_gen = my_map_gen_settings
+     if name ~= "garden" then
+        storage.warptorio.void = true
+     end
+     storage.warptorio.allow_random_spawn = false
   elseif name == "space" then
      map_gen = space_gen_settings
      storage.warptorio.allow_random_spawn = false
   else
-    storage.warptorio.void = false
+     storage.warptorio.void = false
   end
   map_gen.seed = math.random(0,math.pow(2,16))
 
@@ -655,11 +660,13 @@ local function new_random_surface(name)
      ms = map_gen
      if name == "space" then
         game.print({"warptorio.map-space"})
+     elseif name == "garden" then
+        -- no message, garden is an internal floor
      elseif storage.warptorio.planet_next == "void" then
         game.print({"warptorio.map-void"})
      end
   else
-     local ms_i = map_gens.variant_list[math.random(1,#map_gens.variant_list)]
+     local ms_i = storage.warptorio.forced_variant or map_gens.variant_list[math.random(1,#map_gens.variant_list)]
      storage.warptorio.current_variant = ms_i
      if ms_i == "rich" then
         storage.warptorio.allow_random_spawn = false
@@ -1644,6 +1651,15 @@ local function next_warp_zone_prepare(forced)
        surface = new_random_surface("home")
        storage.warptorio.previous_surface_2 = nil
        storage.warptorio.previous_surface_1 = nil
+    elseif forced == "space" then
+       surface = new_random_surface("space")
+       storage.warptorio.previous_surface_2 = nil
+       storage.warptorio.previous_surface_1 = nil
+    elseif forced then
+       storage.warptorio.planet_next = forced
+       storage.warptorio.previous_surface_2 = nil
+       storage.warptorio.previous_surface_1 = nil
+       surface = new_random_surface(name)
     else
        local num = math.random()
        if num < warp_settings.stuck_in_space_chance and not game.surfaces["space"] then
@@ -1775,6 +1791,7 @@ local function next_warp_zone_finish()
     if storage.warptorio.factory_level > 0 then
        refresh_power_and_teleport()
     end
+    minimap.chart(name)
    if storage.warptorio.factory_level >= warp_settings.space.trigger_factory_level and
       warp_settings.space.transition then
       game.play_sound({path="warp-end"})
@@ -1879,6 +1896,15 @@ local function next_warp_zone_transition()
 end
 
 local function force_warp(destination)
+   if destination and destination ~= "nauvis" and destination ~= "void" and destination ~= "space"
+      and not game.planets[destination] then
+      game.print("ERORR:Unknown force warp destination: "..tostring(destination))
+      return
+   end
+   if destination == "space" and game.surfaces["space"] and game.surfaces["space"].valid then
+      game.print("ERORR:Cannot warp to space: space surface already exists")
+      return
+   end
    storage.warptorio.warp_out = 0
    storage.warptorio.transition_timer = 0
    storage.warptorio.force_direct = true
@@ -2071,160 +2097,6 @@ local function update_nauvis_timer()
    end
 end
 
-local ground_minimap_frame_name = "warptorio_ground_minimap_frame"
-local ground_minimap_name = "warptorio_ground_minimap"
-local ground_minimap_size = warp_settings.minimap.size
-
-local function is_interior_floor(surface_name)
-   return surface_name == "factory" or surface_name == "garden"
-end
-
-local function get_minimap_setting(player_settings, name, default)
-   local setting = player_settings[name]
-   if not setting or setting.value == nil then
-      return default
-   end
-   return setting.value
-end
-
-local function get_ground_minimap_surface()
-   if not storage.warptorio then return nil end
-   local ground_name = storage.warptorio.warp_zone
-   if storage.warptorio.teleporting then
-      ground_name = "warp-space-transition"
-   end
-   local ground = game.surfaces[ground_name]
-   if not ground then
-      ground = game.surfaces[storage.warptorio.warp_zone]
-   end
-   return ground
-end
-
-local function default_ground_minimap_location(player)
-   local scale = player.display_scale
-   return {
-      x = player.display_resolution.width - (ground_minimap_size + 12) * scale,
-      y = player.display_resolution.height - (ground_minimap_size + 12) * scale - 80 * scale,
-   }
-end
-
-local function sync_ground_minimap(player)
-   local frame = player.gui.screen[ground_minimap_frame_name]
-   local player_settings = settings.get_player_settings(player)
-   local enabled = get_minimap_setting(player_settings, "warptorio-ground-minimap", true)
-   local toggled = not (storage.warptorio.minimap_toggled and storage.warptorio.minimap_toggled[player.index] == false)
-
-   if frame and minimap_needs_reposition then
-      frame.auto_center = false
-      local saved_location = storage.warptorio.minimap_locations and storage.warptorio.minimap_locations[player.index]
-      if saved_location then
-         frame.location = saved_location
-      else
-         frame.location = default_ground_minimap_location(player)
-      end
-   end
-
-   if not enabled or not toggled then
-      if frame then frame.destroy() end
-      return
-   end
-
-   local ground = get_ground_minimap_surface()
-   local on_interior = player.connected and
-      player.controller_type == defines.controllers.character and
-      is_interior_floor(player.surface.name) and ground ~= nil
-
-   if not on_interior then
-      if frame then frame.visible = false end
-      return
-   end
-
-   if not frame then
-      frame = player.gui.screen.add{
-         type = "frame",
-         name = ground_minimap_frame_name,
-         caption = {"warptorio.ground-minimap"},
-         direction = "vertical",
-      }
-      frame.auto_center = false
-      local minimap = frame.add{type = "minimap", name = ground_minimap_name}
-      minimap.style.width = ground_minimap_size
-      minimap.style.height = ground_minimap_size
-      minimap.style.padding = 0
-      local saved_location = storage.warptorio.minimap_locations and storage.warptorio.minimap_locations[player.index]
-      if saved_location then
-         frame.location = saved_location
-      else
-         frame.location = default_ground_minimap_location(player)
-      end
-   end
-   frame.visible = true
-
-   local minimap = frame[ground_minimap_name]
-   if minimap.surface_index ~= ground.index then
-      minimap.surface_index = ground.index
-   end
-   local level = storage.warptorio.ground_level > 0 and storage.warptorio.ground_level or 1
-   local platform_size = (warp_settings.floor.levels[level] or 6) * 2
-   local factor = storage.warptorio.minimap_zoom_factor and storage.warptorio.minimap_zoom_factor[player.index] or 1
-   local zoom = math.max(math.min(ground_minimap_size / (platform_size * warp_settings.minimap.platform_fill) * factor, warp_settings.minimap.zoom_max), warp_settings.minimap.zoom_min)
-   if minimap.zoom ~= zoom then
-      minimap.zoom = zoom
-   end
-   minimap.position = translate_surface_position(ground.name, player.position)
-end
-
-local function on_ground_minimap_scroll(event, direction)
-   local element = event.cursor_element
-   if not element then return end
-   if element.name ~= ground_minimap_name and element.name ~= ground_minimap_frame_name then return end
-   local player = game.get_player(event.player_index)
-   if not player then return end
-   if not storage.warptorio.minimap_zoom_factor then
-      storage.warptorio.minimap_zoom_factor = {}
-   end
-   local factor = storage.warptorio.minimap_zoom_factor[player.index] or 1
-   if direction > 0 then
-      factor = factor * warp_settings.minimap.zoom_step
-   else
-      factor = factor / warp_settings.minimap.zoom_step
-   end
-   factor = math.max(warp_settings.minimap.zoom_factor_min, math.min(warp_settings.minimap.zoom_factor_max, factor))
-   storage.warptorio.minimap_zoom_factor[player.index] = factor
-   sync_ground_minimap(player)
-end
-
-script.on_event("warptorio-ground-minimap-zoom-in", function(e)
-   on_ground_minimap_scroll(e, 1)
-end)
-script.on_event("warptorio-ground-minimap-zoom-out", function(e)
-   on_ground_minimap_scroll(e, -1)
-end)
-
-script.on_event(defines.events.on_player_changed_surface, function(e)
-   local player = game.get_player(e.player_index)
-   if player then sync_ground_minimap(player) end
-end)
-
-script.on_event(defines.events.on_gui_location_changed, function(e)
-   if e.element and e.element.name == ground_minimap_frame_name then
-      local player = game.get_player(e.player_index)
-      if player then
-         storage.warptorio.minimap_locations = storage.warptorio.minimap_locations or {}
-         storage.warptorio.minimap_locations[player.index] = e.element.location
-      end
-   end
-end)
-
-script.on_event(defines.events.on_runtime_mod_setting_changed, function(e)
-   if e.setting == "warptorio-ground-minimap" then
-      for _, player in pairs(game.players) do
-         sync_ground_minimap(player)
-      end
-   end
-end)
-
-
 local function trigger_game_over()
     if storage.warptorio.game_over then return end
     storage.warptorio.game_over = true
@@ -2342,7 +2214,7 @@ if storage.warptorio.game_over then return end
      dest = "warp-space-transition"
   end
    for i,v in pairs(players) do
-      sync_ground_minimap(v)
+      minimap.sync(v)
    end
    if minimap_needs_reposition then
       minimap_needs_reposition = false
@@ -2383,18 +2255,7 @@ script.on_event(defines.events.on_player_created, function(event)
 end)
 
 script.on_event(defines.events.on_gui_click, function(event)
-    if event.element and (event.element.name == ground_minimap_name or event.element.name == ground_minimap_frame_name) then
-       local player = game.get_player(event.player_index)
-       local ground = get_ground_minimap_surface()
-       if player and ground and player.controller_type == defines.controllers.character then
-          player.set_controller{
-             type = defines.controllers.remote,
-             surface = ground,
-             position = translate_surface_position(ground.name, player.position),
-          }
-       end
-       return
-    end
+    if minimap.on_click(event) then return end
     if not storage.warptorio.clicks_to_teleport then
        storage.warptorio.clicks_to_teleport = {}
     end
@@ -2631,18 +2492,7 @@ script.on_event(defines.events.on_lua_shortcut, function(e)
          speech_bubbles.notify(game.players[e.player_index], {"warptorio.teleport-not-available"}, 4)
       end
     end
-    if e.prototype_name == "warptorio-ground-minimap-toggle" then
-       local player = game.get_player(e.player_index)
-       if player then
-          storage.warptorio.minimap_toggled = storage.warptorio.minimap_toggled or {}
-          local toggled = storage.warptorio.minimap_toggled[player.index]
-          if toggled == nil then toggled = true end
-          toggled = not toggled
-          storage.warptorio.minimap_toggled[player.index] = toggled
-          player.set_shortcut_toggled("warptorio-ground-minimap-toggle", toggled)
-          sync_ground_minimap(player)
-       end
-    end
+    if minimap.on_shortcut(e) then return end
 end)
 
 script.on_event(defines.events.on_player_respawned, function(event)
@@ -2881,9 +2731,10 @@ warpcheat.init({
   next_warp_zone = next_warp_zone,
   force_warp = force_warp,
   update_label = update_label,
-  teleport_body = teleport_body,
+  teleport_body = player_teleport.teleport_body,
   translate_surface_position = translate_surface_position,
   update_ground_platform = update_ground_platform,
+  map_variants = map_gens.variant_list,
   clean_ground_platform = function()
     local level = storage.warptorio.ground_level or 0
     local platform = warp_settings.floor.levels[level]
@@ -2895,3 +2746,8 @@ warpcheat.init({
   platform_code = platform_code,
 })
 end
+
+minimap.init({
+  translate_surface_position = translate_surface_position,
+  minimap_needs_reposition = function() return minimap_needs_reposition end,
+})
