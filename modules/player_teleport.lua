@@ -16,6 +16,22 @@ local function translate_surface_position(surface_name, position)
   return {x = position.x + offset.x, y = position.y + offset.y}
 end
 
+local rideable_vehicle_types = {
+  ["car"] = true,
+  ["tank"] = true,
+  ["spider-vehicle"] = true,
+}
+
+local function get_rideable_vehicle(player)
+  local vehicle = player.vehicle
+  if vehicle and vehicle.valid and rideable_vehicle_types[vehicle.type] then
+    return vehicle
+  end
+  return nil
+end
+
+M.get_rideable_vehicle = get_rideable_vehicle
+
 local function teleport_fx()
    storage.warptorio = storage.warptorio or {}
    storage.warptorio.teleport_fx = storage.warptorio.teleport_fx or {}
@@ -140,6 +156,7 @@ function M.check_teleport(player,location,destination,box)
   if storage.warptorio.factory_level == 0 then return end
   local character = player.character
   if not character then return end
+  if get_rideable_vehicle(player) then return end
   if character.surface.name ~= location.surface then return end
   local charges = storage.warptorio.teleport_charge
   if not charges then
@@ -225,7 +242,9 @@ function M.teleport_players(source,destination,factory)
   for _, v in pairs(game.players) do
     if not (v.is_player() and v.connected and v.character) then goto continue end
 
-    if factory and player_on_factory_warp_belt(v) then
+    local vehicle = get_rideable_vehicle(v)
+
+    if not vehicle and factory and player_on_factory_warp_belt(v) then
       local home = game.surfaces["factory"].find_non_colliding_position("character", {0,-2}, 0, 0.5, false) or {0,-2}
       teleport_player_to(v, home)
       goto continue
@@ -234,6 +253,48 @@ function M.teleport_players(source,destination,factory)
     if v.character.surface.name ~= source then goto continue end
 
     local character_pos = v.character.position
+
+    if vehicle then
+      local dest_surface = game.surfaces[destination]
+      if dest_surface and dest_surface.valid then
+        local target
+        if factory then
+          target = dest_surface.find_non_colliding_position(vehicle.name, {0,-2}, 0, platform, false) or {0,-2}
+        elseif character_pos.x >= minx and character_pos.x <= maxx and character_pos.y >= miny and character_pos.y <= maxy then
+          target = {x = dest_offset.x + (character_pos.x - source_offset.x), y = dest_offset.y + (character_pos.y - source_offset.y)}
+        else
+          target = dest_surface.find_non_colliding_position(vehicle.name, {x=dest_offset.x, y=dest_offset.y}, 0, platform, false) or {x=dest_offset.x, y=dest_offset.y}
+        end
+        for _, clone in ipairs(dest_surface.find_entities_filtered{
+          type = vehicle.type,
+          name = vehicle.name,
+          area = {{target.x - 0.6, target.y - 0.6}, {target.x + 0.6, target.y + 0.6}},
+        }) do
+          if clone.valid and clone ~= vehicle then
+            clone.destroy({raise_destroy = true})
+          end
+        end
+        local from_surface = vehicle.surface
+        local from_position = vehicle.position
+        local pos = target
+        if not vehicle.teleport(pos, dest_surface) then
+          pos = dest_surface.find_non_colliding_position(vehicle.name, target, 0, platform, false)
+          if pos and not vehicle.teleport(pos, dest_surface) then
+            pos = nil
+          end
+        end
+        if pos then
+          M.play_teleport_sound(from_surface, from_position)
+          M.play_teleport_sound(dest_surface, pos)
+          M.teleport_effect(from_surface, from_position)
+          M.teleport_effect(dest_surface, pos)
+        else
+          teleport_player_to(v, target)
+        end
+      end
+      goto continue
+    end
+
     local target
     if factory then
       target = game.surfaces["factory"].find_non_colliding_position("character", {0,-2}, 0, 0.5, false) or {0,-2}

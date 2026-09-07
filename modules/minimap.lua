@@ -46,20 +46,35 @@ local function default_ground_minimap_location(player)
   }
 end
 
+local function get_saved_minimap_location(player)
+  local saved_location = storage.warptorio.minimap_locations and storage.warptorio.minimap_locations[player.index]
+  if saved_location and saved_location.x >= -0.5 and saved_location.x <= 1.5 and saved_location.y >= -0.5 and saved_location.y <= 1.5 then
+    local res = player.display_resolution
+    return {
+      x = math.floor(saved_location.x * res.width),
+      y = math.floor(saved_location.y * res.height),
+    }
+  end
+  return nil
+end
+
+local function restore_ground_minimap_location(player, frame)
+  frame.location = get_saved_minimap_location(player) or default_ground_minimap_location(player)
+end
+
 local function manage_builtin_minimap(player, on_interior)
-  local view = player.game_view_settings
-  if not view or view.minimap_enabled == nil then return end
+  local minimap_enabled = player.game_view_settings.show_minimap
   if on_interior then
-    if view.minimap_enabled then
+    if minimap_enabled then
       storage.warptorio.minimap_saved = storage.warptorio.minimap_saved or {}
       storage.warptorio.minimap_saved[player.index] = true
-      view.minimap_enabled = false
+      player.game_view_settings.show_minimap = false
     end
   else
     local saved = storage.warptorio.minimap_saved and storage.warptorio.minimap_saved[player.index]
     if saved ~= nil then
       storage.warptorio.minimap_saved[player.index] = nil
-      view.minimap_enabled = saved
+      player.game_view_settings.show_minimap = saved
     end
   end
 end
@@ -72,12 +87,7 @@ local function sync_ground_minimap(player)
 
   if frame and env.minimap_needs_reposition() then
     frame.auto_center = false
-    local saved_location = storage.warptorio.minimap_locations and storage.warptorio.minimap_locations[player.index]
-    if saved_location then
-      frame.location = saved_location
-    else
-      frame.location = default_ground_minimap_location(player)
-    end
+    restore_ground_minimap_location(player, frame)
   end
 
   if not enabled or not toggled then
@@ -110,12 +120,7 @@ local function sync_ground_minimap(player)
     minimap.style.width = ground_minimap_size
     minimap.style.height = ground_minimap_size
     minimap.style.padding = 0
-    local saved_location = storage.warptorio.minimap_locations and storage.warptorio.minimap_locations[player.index]
-    if saved_location then
-      frame.location = saved_location
-    else
-      frame.location = default_ground_minimap_location(player)
-    end
+    restore_ground_minimap_location(player, frame)
   end
   frame.visible = true
 
@@ -172,7 +177,11 @@ script.on_event(defines.events.on_gui_location_changed, function(e)
     local player = game.get_player(e.player_index)
     if player then
       storage.warptorio.minimap_locations = storage.warptorio.minimap_locations or {}
-      storage.warptorio.minimap_locations[player.index] = e.element.location
+      local res = player.display_resolution
+      storage.warptorio.minimap_locations[player.index] = {
+        x = e.element.location.x / res.width,
+        y = e.element.location.y / res.height,
+      }
     end
   end
 end)
@@ -190,7 +199,7 @@ script.on_event(defines.events.on_player_display_resolution_changed, function(e)
   if not player then return end
   local frame = player.gui.screen[ground_minimap_frame_name]
   if frame then
-    frame.location = default_ground_minimap_location(player)
+    restore_ground_minimap_location(player, frame)
   end
 end)
 
@@ -199,7 +208,7 @@ script.on_event(defines.events.on_player_display_scale_changed, function(e)
   if not player then return end
   local frame = player.gui.screen[ground_minimap_frame_name]
   if frame then
-    frame.location = default_ground_minimap_location(player)
+    restore_ground_minimap_location(player, frame)
   end
 end)
 

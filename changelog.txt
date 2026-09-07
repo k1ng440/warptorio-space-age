@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.5
+Date: 2026-09-07
+  Changes:
+    - Re-link spidertron remotes (including saved quickbar slots) to the cloned spidertrons after the ground floor warp
+    - Players inside a car, tank or spidertron are no longer teleported: floor teleport pads and the teleport shortcut ignore vehicle riders, and during a warp the whole vehicle (with its occupants) is moved instead of ejecting the player
+---------------------------------------------------------------------------------------------------
 Version: 0.4.4
 Date: 2026-09-05
   Changes:

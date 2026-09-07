@@ -14,6 +14,7 @@ local floor_garden = require("modules.floor_garden")
 local warp_vote = require("modules.warp_vote")
 local speech_bubbles = require("modules.speech_bubbles")
 local minimap = require("modules.minimap")
+local teleporter_visualize = require("modules.teleporter_visualize")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -559,6 +560,8 @@ local function refresh_power_and_teleport(dest)
       container.minable_flag = false
       container.rotatable = false
     end
+
+    teleporter_visualize.refresh()
 end
 
 local function update_factory_platform(e)
@@ -1543,6 +1546,120 @@ local function clean_ground_tiles(surface_name, area)
   end
 end
 
+-- Snapshot each player's saved quickbar spidertron-remote slots before the
+-- clone. Positions are offset-relative so the matching clones can be found on
+-- the destination afterwards.
+local function capture_spidertron_selections(source, offset)
+  local captured = {}
+  local source_surface = game.surfaces[source]
+  if not source_surface or not source_surface.valid then return captured end
+
+  for _, player in pairs(game.players) do
+    if player.connected and player.valid then
+      local slots = {}
+      for page = 1, 10 do
+        for slot = 1, (player.quick_bar_width or 10) do
+          local qbs = player.get_quick_bar_slot(page, slot)
+          if qbs and qbs.type == "remote" and qbs.selection and #qbs.selection > 0 then
+            local rel = {}
+            local keep = {}
+            local any_on_source = false
+            for _, spider in ipairs(qbs.selection) do
+              if spider.valid then
+                if spider.surface.name == source then
+                  rel[#rel + 1] = {x = spider.position.x - offset.x, y = spider.position.y - offset.y}
+                  any_on_source = true
+                else
+                  keep[#keep + 1] = spider
+                end
+              end
+            end
+            if any_on_source then
+              slots[#slots + 1] = {page = page, slot = slot, filter = qbs.filter, rel = rel, keep = keep}
+            end
+          end
+        end
+      end
+      if #slots > 0 then
+        captured[player.index] = slots
+      end
+    end
+  end
+  local n = 0
+  for _ in pairs(captured) do n = n + 1 end
+  log("[warptorio] spidertron capture on " .. source .. ": " .. n .. " player(s)")
+  return captured
+end
+
+-- Re-link the spidertron remotes to the clones after the warp: clones don't keep
+-- the saved selection, and the originals are gone once the old surface is
+-- deleted. 1.5 tile tolerance for the clone position.
+local function restore_spidertron_selections(target, captured)
+  if not captured or next(captured) == nil then return end
+  local surface = game.surfaces[target]
+  if not surface or not surface.valid then return end
+  local offset = get_surface_offset(target)
+
+  local function find_clone(r)
+    local target_pos = {x = offset.x + r.x, y = offset.y + r.y}
+    local found = surface.find_entities_filtered{
+      type = "spider-vehicle",
+      position = target_pos,
+      radius = 1.5,
+    }
+    if not found then return nil end
+    local best, best_d = nil, math.huge
+    for _, spider in ipairs(found) do
+      if spider.valid then
+        local d = math.abs(spider.position.x - target_pos.x) + math.abs(spider.position.y - target_pos.y)
+        if d < best_d then
+          best, best_d = spider, d
+        end
+      end
+    end
+    return best
+  end
+
+  for player_index, slots in pairs(captured) do
+    local player = game.get_player(player_index)
+    if player and player.valid and player.connected then
+      -- Rewrite each saved quickbar remote slot to the clones, using the
+      -- per-slot captured selection (each remote is its own squad). The filter
+      -- must be written back with an explicit quality: without one the engine
+      -- does not treat it as a simple filter and aborts when the slot is
+      -- picked (QuickBarSlotLogic assert, SIGABRT).
+      local rewritten = 0
+      for _, slot_data in ipairs(slots) do
+        local selection = {}
+        for _, spider in ipairs(slot_data.keep or {}) do
+          if spider.valid then selection[#selection + 1] = spider end
+        end
+        for _, r in ipairs(slot_data.rel) do
+          local c = find_clone(r)
+          if c then selection[#selection + 1] = c end
+        end
+        if #selection > 0 then
+          local filter = slot_data.filter or {name = "spidertron-remote"}
+          filter.quality = filter.quality or "normal"
+          local ok, err = pcall(function()
+            player.set_quick_bar_slot(slot_data.page, slot_data.slot, {
+              type = "remote",
+              filter = filter,
+              selection = selection,
+            })
+          end)
+          if ok then
+            rewritten = rewritten + 1
+          else
+            log("[warptorio] quickbar remote rewrite failed: " .. tostring(err))
+          end
+        end
+      end
+      log("[warptorio] spidertron relink: player " .. player_index .. " slots " .. #slots .. " (" .. rewritten .. " rewritten) on " .. target)
+    end
+  end
+end
+
 local function teleport_ground(source, target)
   local level = storage.warptorio.ground_level or 0
 
@@ -1570,6 +1687,7 @@ local function teleport_ground(source, target)
   end
 
   local captured_modes = train_code.capture_clone_states(game.surfaces[source], source_offset)
+  local captured_spidertrons = capture_spidertron_selections(source, source_offset)
 
   train_code.freeze_ground_bound_trains(source)
 
@@ -1599,7 +1717,7 @@ local function teleport_ground(source, target)
 
   --Regenerate belts and power
 
-
+  return captured_spidertrons
 end
 
 
@@ -1728,13 +1846,14 @@ local function next_warp_zone_finish()
        end
     end
     storage.warptorio.container = nil
-    teleport_ground(source,name)
+    local captured_spidertrons = teleport_ground(source,name)
     --player_teleport.teleport_players(source,name,true)
     if storage.warptorio.factory_level > 0 then
        player_teleport.teleport_players(source,"factory",true)
     else
        player_teleport.teleport_players(source,name)
     end
+    restore_spidertron_selections(name, captured_spidertrons)
     if storage.warptorio.factory_level > 0 then
       refresh_power_and_teleport(name)
     end
@@ -1845,12 +1964,13 @@ local function next_warp_zone_space()
       end
    end
    storage.warptorio.container = nil
-   teleport_ground(source,dest)
+   local captured_spidertrons = teleport_ground(source,dest)
    -- Cloning the ground floor invalidates the combinators standing on it, so pick up
    -- the clones straight away. Without this they stop updating for the whole
    -- transition, which is exactly when signal-J / signal-D are worth reading.
    warp_constant_combinator.rescan()
    player_teleport.teleport_players(source,"factory",true)
+   restore_spidertron_selections(dest, captured_spidertrons)
    --set_hidden_tiles(dest,"empty-space")
    create_void_platform(source,true)
 
@@ -2226,12 +2346,16 @@ if storage.warptorio.game_over then return end
   for i,v in pairs(players) do
     -- If player steps into teleport zone, teleport them
     if v.is_player() and v.connected and v.character and v.physical_controller_type == defines.controllers.character then
-      player_teleport.check_teleport(v,{x=-1,y=-3,surface=dest},"factory")
-      player_teleport.check_teleport(v,{x=-1,y=1,surface="factory"},dest)
-      if storage.warptorio.biochamber_level then
-        player_teleport.check_teleport(v,{y=-1,x=2,surface="garden"},"factory")
-        player_teleport.check_teleport(v,{y=-1,x=-3,surface="factory"},"garden",{minx=-0.4,maxx=1.6,miny=-0.4,maxy=1.6})
-        player_teleport.check_teleport(v,{y=-1,x=3,surface="garden"},"factory")
+      local warp_zone = dest
+      for _, pad in pairs(warp_settings.teleporters) do
+        if not pad.biochamber or storage.warptorio.biochamber_level then
+          local source = pad.surface == "$warp_zone" and warp_zone or pad.surface
+          local destination = pad.destination == "$warp_zone" and warp_zone or pad.destination
+          player_teleport.check_teleport(v,
+            {x = pad.position.x, y = pad.position.y, surface = source},
+            destination,
+            pad.box)
+        end
       end
     end
   end
@@ -2306,12 +2430,12 @@ if storage.warptorio.warp_out > 0 then
           if not storage.warptorio.admin_shift then
              storage.warptorio.admin_shift = {}
           end
-          local last = storage.warptorio.admin_shift[player_index]
+          local last = storage.warptorio.admin_shift[event.player_index]
           if not last or (game.tick - last) > 60 then
-             storage.warptorio.admin_shift[player_index] = game.tick
+             storage.warptorio.admin_shift[event.player_index] = game.tick
              return
           end
-          storage.warptorio.admin_shift[player_index] = nil
+          storage.warptorio.admin_shift[event.player_index] = nil
           next_warp_zone()
           return
        end
@@ -2484,14 +2608,18 @@ script.on_event(defines.events.on_lua_shortcut, function(e)
       --player_teleport.check_teleport(game.players[e.player_index],{x=-1,y=-2,surface=storage.warptorio.warp_zone},"factory")
       if storage.warptorio.factory_level > 0 then
          local player = game.players[e.player_index]
-         local player_pos = game.surfaces["factory"].find_non_colliding_position("character", {0,0}, 0, 0.5, false)
-         local from_surface = player.character and player.character.surface or nil
-         local from_position = player.character and player.character.position or nil
-         player_teleport.teleport_body(player, player_pos, "factory")
-         player_teleport.play_teleport_sound(from_surface, from_position)
-         player_teleport.play_teleport_sound(game.surfaces["factory"], player_pos)
-         player_teleport.teleport_effect(from_surface, from_position)
-         player_teleport.teleport_effect(game.surfaces["factory"], player_pos)
+         if player_teleport.get_rideable_vehicle(player) then
+            speech_bubbles.notify(player, {"warptorio.teleport-in-vehicle"}, 4)
+         else
+            local player_pos = game.surfaces["factory"].find_non_colliding_position("character", {0,0}, 0, 0.5, false)
+            local from_surface = player.character and player.character.surface or nil
+            local from_position = player.character and player.character.position or nil
+            player_teleport.teleport_body(player, player_pos, "factory")
+            player_teleport.play_teleport_sound(from_surface, from_position)
+            player_teleport.play_teleport_sound(game.surfaces["factory"], player_pos)
+            player_teleport.teleport_effect(from_surface, from_position)
+            player_teleport.teleport_effect(game.surfaces["factory"], player_pos)
+         end
       else
          speech_bubbles.notify(game.players[e.player_index], {"warptorio.teleport-not-available"}, 4)
       end
@@ -2748,6 +2876,7 @@ warpcheat.init({
     return true
   end,
   platform_code = platform_code,
+  teleporter_visualize = teleporter_visualize,
 })
 end
 
@@ -2755,3 +2884,18 @@ minimap.init({
   translate_surface_position = translate_surface_position,
   minimap_needs_reposition = function() return minimap_needs_reposition end,
 })
+
+teleporter_visualize.init({
+  get_warp_zone = function() return storage.warptorio.warp_zone end,
+  teleporters = warp_settings.teleporters,
+})
+
+commands.add_command("warptorio-visualize-teleporters", "Toggle teleporter zone visualization (admin only)", function(cmd)
+  if not cmd.player_index then return end
+  local player = game.players[cmd.player_index]
+  if not player.admin then
+    player.print("Only admins can use this command.")
+    return
+  end
+  teleporter_visualize.toggle(player)
+end)

@@ -186,6 +186,9 @@ local function warpcheat_gui(player)
   action_button(tech_actions, "warpcheat-research", "Research", "green_button")
   action_button(tech_actions, "warpcheat-unresearch", "Unresearch", "red_button")
 
+  subheader(right, "Debug")
+  action_button(right, "warpcheat-visualize-teleporters", "Toggle teleporter zones")
+
   subheader(right, "Container")
   action_button(right, "warpcheat-chest", "Give warpchest")
 
@@ -296,6 +299,12 @@ function module.handle_click(event)
       player.print("Gave a warpchest")
     else
       player.print("No space in inventory for warpchest")
+    end
+  elseif name == "warpcheat-visualize-teleporters" then
+    if env.teleporter_visualize then
+      env.teleporter_visualize.toggle(player)
+    else
+      player.print("Teleporter visualize module not loaded")
     end
   elseif name == "warpcheat-platform" then
     env.platform_code.spawn_random()

@@ -503,4 +503,38 @@ local_settings.animation = {
   build_anim_offset = {x = 0, y = 0},
 }
 
+local_settings.teleporters = {
+  -- "$warp_zone" is resolved at runtime to the current ground surface name
+  ground_to_factory = {
+    surface = "$warp_zone",
+    position = {x = -1, y = -3},
+    box = {minx = -0.4, maxx = 2.4, miny = -0.4, maxy = 2.5},
+    destination = "factory",
+    color = {0.2, 0.9, 0.3},
+  },
+  factory_to_ground = {
+    surface = "factory",
+    position = {x = -1, y = 1},
+    box = {minx = -0.4, maxx = 2.4, miny = 0.3, maxy = 2.3},
+    destination = "$warp_zone",
+    color = {0.9, 0.2, 0.2},
+  },
+  factory_to_garden = {
+    surface = "factory",
+    position = {x = -3, y = -1},
+    box = {minx = -0.4, maxx = 1.6, miny = -0.4, maxy = 2.3},
+    destination = "garden",
+    biochamber = true,
+    color = {0.2, 0.4, 1.0},
+  },
+  garden_to_factory = {
+    surface = "garden",
+    position = {x = 2, y = -1},
+    box = {minx = -1.3, maxx = 1.3, miny = -0.4, maxy = 2.5},
+    destination = "factory",
+    biochamber = true,
+    color = {0.1, 0.8, 0.9},
+  },
+}
+
 return local_settings
