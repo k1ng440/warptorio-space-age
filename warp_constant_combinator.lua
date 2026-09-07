@@ -165,12 +165,38 @@ end
 
 function warp_constant_combinator.refresh()
   local entities = ensure_storage()
+  if not next(entities) then
+    return
+  end
   local time_limit = warp_settings.time.round + (warp_settings.time.round * storage.warptorio.time_level)
-  local remaining_time = math.max(0, time_limit - storage.warptorio.time_passed)
+  local remaining_time = math.max(0, math.floor(time_limit - storage.warptorio.time_passed))
   local wave_index = storage.warptorio.wave_index or 0
-  local wave_time = math.max(0, storage.warptorio.wave_time or 0)
+  local wave_time = math.max(0, math.floor(storage.warptorio.wave_time or 0))
   local warp_amount = get_warp_amount()
   local in_transition, transition_time = get_transition_state()
+
+  -- All signals are whole numbers or discrete planet ids, so only rewrite the
+  -- slots when one of them crosses a boundary. Counting/seconds resolution is
+  -- preserved exactly; the slot writes just stop happening 59 times per second.
+  local current_name = storage.warptorio.surface_name or ""
+  local next_name = storage.warptorio.planet_next or ""
+  local key = table.concat({
+    remaining_time,
+    wave_index,
+    wave_time,
+    warp_amount,
+    in_transition,
+    transition_time,
+    current_name,
+    next_name,
+  }, "|")
+
+  storage.warptorio.combinator_cache = storage.warptorio.combinator_cache or {}
+  local cache = storage.warptorio.combinator_cache
+  if cache.key == key then
+    return
+  end
+  cache.key = key
 
   local state = {
     remaining_time = remaining_time,

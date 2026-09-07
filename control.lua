@@ -4,6 +4,7 @@ local train_code = require("train")
 local platform_code = require("platforms")
 local warp_constant_combinator = require("warp_constant_combinator")
 local player_teleport = require("modules.player_teleport")
+local gui_state = require("modules.gui_state")
 local platform_animation = require("modules.platform_animation")
 local ok, warpcheat = pcall(require, "modules.warpcheat")
 if type(warpcheat) ~= "table" then
@@ -1230,70 +1231,6 @@ local function update_belt(e)
     storage.warptorio.belt_level = level
 end
 
-function sec_to_time(time_base)
-    local minutes = math.floor(time_base / 60)
-    local seconds = time_base % 60
-    return string.format("%02d:%02d",minutes,seconds)
-end
-
-local function warp_gui(player)
-   local screen_element = player.gui.top
-   if not storage.warptorio.gui then storage.warptorio.gui = {} end
-
-   -- clear old gui if it exists
-   local elements = {
-      "time_passed_label",
-      "number_of_warps_label",
-      "number_of_waves_time",
-      "number_of_waves_amount",
-      "time_to_warp",
-      "warp_planet"
-   }
-   for _,v in ipairs(elements) do
-      if screen_element[v] then screen_element[v].destroy() end
-   end
-   
-   local warp_frame_data = warp_settings.gui.data
-   
-   local warpFrame = screen_element.add{type = "frame", name=warp_settings.gui.holder,direction="horizontal"}
-   --local dragger = warpFrame.add{type="empty-widget", style="draggable_space"}
-   --dragger.style.size = {128, 24}
-   --dragger.drag_target = frame
-   for _,v in ipairs(warp_frame_data) do
-      local frame = warpFrame.add{type = "frame",style="warptorio_frame", name=v.name,direction="vertical"}
-      frame.add{type = "label", style="bold_label", name = "WarpLabel", caption = v.label}
-      frame.add{type = "line", name = "WarpLine"}
-      frame.add{type = "label", name = "WarpValue", caption = "  "..v.value.."  "}
-   end
-   
-   local frame = warpFrame.add{type = "frame",style="entity_frame", name="buttons",direction="vertical"}
-   local warp_button = frame.add{type = "button", name="warp_planet", style="red_button", caption={"warptorio.button-warp"}}
-   if player.admin then
-      warp_button.tooltip = {"warptorio.button-warp-admin"}
-   elseif storage.warptorio.ground_level == 0 then
-      warp_button.tooltip = {"warptorio.warp-not-available"}
-   end
-   --frame.add{type = "button", name="go_home", style="green_button", caption="Home"}
-end
-
-function update_label(label_name,text,is_label)
-   local is_label = is_label or false
-   local gui_parent = warp_settings.gui.holder
-   
-   for k, v in pairs(game.players) do
-      if not v.gui.top[gui_parent] then
-         warp_gui(v)
-      end
-      local vl = warp_settings.gui.value
-      local ll = warp_settings.gui.label
-      if not is_label then
-         v.gui.top[gui_parent][label_name][vl].caption = text
-      else
-         v.gui.top[gui_parent][label_name][ll].caption = text
-      end
-   end
-end
-
 local function technology_check()
   if storage.warptorio and storage.warptorio.transition_timer and storage.warptorio.transition_timer > 60 then return false end
   if not game.forces["player"].current_research then return false end
@@ -1303,59 +1240,7 @@ local function technology_check()
   return false
 end
 
-local function update_warp_button_tooltip()
-   local tip = nil
-   if storage.warptorio.ground_level == 0 then
-      tip = {"warptorio.warp-not-available"}
-   elseif storage.warptorio.warp_out > 0 then
-      tip = {"warptorio.cooling-down"}
-   elseif technology_check() then
-      tip = {"warptorio.technology-check"}
-   elseif platform_animation.is_active() then
-      tip = {"warptorio.platform-animation-in-progress"}
-   end
-   local warp_button_tooltip = tip
-   for _, player in pairs(game.players) do
-      if not player.gui.top[warp_settings.gui.holder] then
-         warp_gui(player)
-      end
-      local button = player.gui.top[warp_settings.gui.holder]["buttons"]["warp_planet"]
-      if button then
-         button.tooltip = warp_button_tooltip
-      end
-   end
-end
-
-local function update_all_labels()
-
-  local time_limit = warp_settings.time.round + (warp_settings.time.round*storage.warptorio.time_level)
-  local time_passed = sec_to_time(time_limit-storage.warptorio.time_passed)
-  update_label("time", time_passed)
-  local index = 0
-  if storage.warporio and storage.warporio.index then
-    index = storage.warporio.index
-  end
-  update_label("amount",index)
-  update_label("wave-time",sec_to_time(storage.warptorio.wave_time))
-  update_label("wave-amount",storage.warptorio.wave_index)
-  --TODO update label as well
-  if storage.warptorio.transition_timer > 60 then
-     update_label("warpout-time",sec_to_time(math.floor(storage.warptorio.transition_timer/60)))
-  else
-     update_label("warpout-time",sec_to_time(storage.warptorio.warp_out))
-  end
-  if storage.warptorio.planet_next and
-     game.forces["player"].technologies[warp_settings.trigger_research].researched then
-     local next_planet = storage.warptorio.planet_next
-     if storage.warptorio.previous_surface_2 == storage.warptorio.planet_next then
-        next_planet = "[color=red]" .. storage.warptorio.planet_next .. "[/color]"
-     end
-     update_label("next-planet", next_planet)
-else
-      update_label("next-planet",{"warptorio.gui-unknown-planet"})
-   end
-   update_warp_button_tooltip()
-end
+gui_state.configure({technology_check = technology_check})
 
 local function spawn_boss_check()
    if storage.warptorio.wave_index % 10 == 0 then
@@ -1706,8 +1591,6 @@ local function teleport_ground(source, target)
   })
 
   train_code.restore_clone_states(game.surfaces[target], dest_offset, captured_modes)
-  clean_ground_tiles(target, destination_area)
-
   clean_ground_tiles(target, destination_area)
   -- Delete teleported(generated) characters
   local surface_player_list = game.surfaces[target].find_entities_filtered{type="character", area = destination_area}
@@ -2265,7 +2148,7 @@ if storage.warptorio.game_over then return end
     end
   end
   if not storage.warptorio.transition_timer then storage.warptorio.transition_timer = -1 end
-  update_all_labels()
+  gui_state.update_all_labels()
   update_nauvis_timer()
   platform_code.on_tick()
   on_tick_power()
@@ -2369,7 +2252,7 @@ script.on_event(defines.events.on_player_created, function(event)
        storage.warptorio.welcome_dialog_tick = game.tick + 60
     end
 
-    warp_gui(player)
+    gui_state.warp_gui(player)
     --local warp_gui = screen_element.add{type="label", name="greeting", caption="Hi"}
 	  --[[screen_element.add{type = "label", name = "time_passed_label", caption = {"time-passed-label", "-"}}
 	  screen_element.add{type = "label", name = "number_of_warps_label", caption = {"number-of-warps-label", "-"}}
@@ -2831,7 +2714,7 @@ commands.add_command("warptorio-set-warp-amount", "Set the current warp count (d
   end
   if not storage.warporio then storage.warporio = {} end
   storage.warporio.index = value
-  update_label("amount", value)
+  gui_state.update_label("amount", value)
   game.players[cmd.player_index].print("Warp amount set to " .. value)
 end)
 
@@ -2862,7 +2745,7 @@ if warpcheat then
 warpcheat.init({
   next_warp_zone = next_warp_zone,
   force_warp = force_warp,
-  update_label = update_label,
+  update_label = gui_state.update_label,
   teleport_body = player_teleport.teleport_body,
   translate_surface_position = translate_surface_position,
   update_ground_platform = update_ground_platform,
