@@ -187,17 +187,45 @@ local function generate_surface_rectangle(surface_name, width, height, tile, off
   return generate_rectangle(width, height, tile, x, y)
 end
 
+local shape_delta_cache = {}
+
+-- The platform geometry (relative {x, y} list) is identical for every surface and only
+-- depends on the configured shape and size, so compute it once per (shape, size). The
+-- previous per-call generation rebuilt the whole ellipse/hexagon/rectangle math for each
+-- warp stamp and clone brush even though the shape never changed.
+local function shape_positions(shape, size)
+  local key = shape .. "_" .. tostring(size)
+  local positions = shape_delta_cache[key]
+  if positions then
+    return positions
+  end
+  local tiles
+  if shape == "circle" then
+    tiles = generate_ellipse(size, size, nil, 0, 0)
+  elseif shape == "hexagon" then
+    tiles = generate_hexagon(size / 2, nil, 0, 0)
+  else
+    tiles = generate_rectangle(size, size, nil, 0, 0)
+  end
+  positions = {}
+  for i = 1, #tiles do
+    positions[i] = tiles[i].position
+  end
+  shape_delta_cache[key] = positions
+  return positions
+end
+
 -- Generates the ground floor tiles in the shape configured by warp_settings.floor.shape.
 -- size is the full diameter/side length of the platform.
 local function generate_ground_shape(surface_name, size, tile)
   local base = get_surface_offset(surface_name)
-  local shape = warp_settings.floor.shape
-  if shape == "circle" then
-    return generate_ellipse(size, size, tile, base.x, base.y)
-  elseif shape == "hexagon" then
-    return generate_hexagon(size / 2, tile, base.x, base.y)
+  local positions = shape_positions(warp_settings.floor.shape, size)
+  local tiles = {}
+  for i = 1, #positions do
+    local p = positions[i]
+    tiles[i] = {name = tile, position = {p[1] + base.x, p[2] + base.y}}
   end
-  return generate_rectangle(size, size, tile, base.x, base.y)
+  return tiles
 end
 
 local function prepare_surface_spawn(surface, surface_name, allow_random)
@@ -1563,12 +1591,14 @@ local function teleport_ground(source, target)
   --storage.warptorio.warp_zone = target
 
   -- Build the brush from the actual ground floor shape so the corners are not teleported.
-  -- generate_ground_shape returns tiles at absolute source positions, which is exactly what
-  -- clone_brush expects for source_positions.
-  local shape_tiles = generate_ground_shape(source, platform * 2, "warp_tile_world")
+  -- The relative shape is cached; only the absolute positions are rebuilt per surface.
+  local positions = shape_positions(warp_settings.floor.shape, platform * 2)
+  local source_ox = source_offset.x
+  local source_oy = source_offset.y
   local source_positions = {}
-  for i = 1, #shape_tiles do
-    source_positions[i] = shape_tiles[i].position
+  for i = 1, #positions do
+    local p = positions[i]
+    source_positions[i] = {p[1] + source_ox, p[2] + source_oy}
   end
 
   local captured_modes = train_code.capture_clone_states(game.surfaces[source], source_offset)
@@ -1703,7 +1733,6 @@ local function next_warp_zone_finish()
    storage.warptorio.previous_surface_1 = storage.warptorio.surface_name
     surface.force_generate_chunk_requests()
     --game.print("New warpzone created")
-    create_void_platform(name)
     local source = nil
     if storage.warptorio.force_direct then
        source = storage.warptorio.warp_zone
@@ -1805,7 +1834,6 @@ local function next_warp_zone_finish()
       game.play_sound({path="warp-start"})
     end
    storage.warptorio.teleporting = false
-   create_void_platform(source,true,"empty-space")
    platform_code.on_warp(source,name)
    warp_constant_combinator.rescan()
 end
@@ -1838,7 +1866,7 @@ local function next_warp_zone_space()
       surface.force_generate_chunk_requests()
    end
 
-   create_void_platform(dest,true,"empty-space",2)
+   create_void_platform(dest,true,"empty-space")
 
    local space_source_surface = game.surfaces[source]
    if space_source_surface and space_source_surface.valid then

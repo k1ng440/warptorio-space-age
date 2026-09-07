@@ -30,24 +30,13 @@ local function get_transition_state()
   return 1, math.max(0, math.ceil(ticks / 60))
 end
 
--- A param with no signal clears its slot. Slots are sticky once written, so a signal
--- that stops applying has to be cleared explicitly or the old value sits there forever.
-local function set_parameters(section, parameters)
-   for _,param in ipairs(parameters) do
-      if param.signal then
-         param.signal.quality="normal"
-         section.set_slot(
-            param.index,
-            {
-               value = param.signal,
-               min=param.count,
-               max=param.count
-            }
-         )
-      else
-         section.clear_slot(param.index)
-      end
-   end
+-- A slot cache key that changes exactly when the slot's on-wire content changes.
+-- Emptied slots are "", anything else is type:name:count.
+local function slot_key(param)
+  if not param.signal then
+    return ""
+  end
+  return (param.signal.type or "") .. ":" .. (param.signal.name or "") .. ":" .. tostring(param.count)
 end
 
 local function get_planet_signal(planet_name)
@@ -60,44 +49,11 @@ local function get_planet_signal(planet_name)
   return {type = "space-location", name = planet_name}
 end
 
-local function update_entity(entity, state)
-  if not entity.valid then
-    return false
-  end
-
-  local control_behavior = entity.get_or_create_control_behavior()
-
-  local section = control_behavior.get_section(1)
-
-  entity.combinator_description = [[
-  signal-T - Remaining time before forced warp
-  signal-W - Wave count
-  signal-V - Remaining time before next enemy wave
-  signal-A - Warp count
-  signal-J - 1 while the platform is warping between planets
-  signal-D - Seconds remaining of the warp transition
-  planet-signal - Value 1 current planet
-  planet-signal - Value 2 next planet
-  ]]
-  
-  if not section then
-     control_behavior.add_section()
-     section = control_behavior.get_section(1)
-  end
-
-  if not section.is_manual then
-     for _,sec in ipairs(control_behavior.sections) do
-        if sec.is_manual then
-           section = sec
-           break
-        end
-     end
-  end
-  
+local function get_parameters(state)
   local parameters = {
-    {index = 1, signal = {type = "virtual", name = "signal-T"}, count = math.floor(state.remaining_time)},
+    {index = 1, signal = {type = "virtual", name = "signal-T"}, count = state.remaining_time},
     {index = 2, signal = {type = "virtual", name = "signal-W"}, count = state.wave_index},
-    {index = 3, signal = {type = "virtual", name = "signal-V"}, count = math.floor(state.wave_time)},
+    {index = 3, signal = {type = "virtual", name = "signal-V"}, count = state.wave_time},
     {index = 4, signal = {type = "virtual", name = "signal-A"}, count = state.warp_amount},
     {index = 5, signal = {type = "virtual", name = "signal-J"}, count = state.in_transition},
     {index = 6, signal = {type = "virtual", name = "signal-D"}, count = state.transition_time},
@@ -121,8 +77,68 @@ local function update_entity(entity, state)
      table.insert(parameters, {index = warp_settings.combinator.slot_current_planet, signal = current_planet_signal, count = 1})
      table.insert(parameters, {index = warp_settings.combinator.slot_next_planet, signal = next_planet_signal, count = 2})
   end
+  return parameters
+end
 
-  set_parameters(section, parameters)
+-- Writes only the slots whose content changed since the last refresh. Slots are
+-- sticky once written, so a signal that stops applying is cleared explicitly.
+local function update_entity(entity, parameters, cache_row)
+  if not entity.valid then
+    return false
+  end
+
+  local control_behavior = entity.get_or_create_control_behavior()
+
+  local section = control_behavior.get_section(1)
+
+  if not cache_row.description_done then
+     entity.combinator_description = [[
+  signal-T - Remaining time before forced warp
+  signal-W - Wave count
+  signal-V - Remaining time before next enemy wave
+  signal-A - Warp count
+  signal-J - 1 while the platform is warping between planets
+  signal-D - Seconds remaining of the warp transition
+  planet-signal - Value 1 current planet
+  planet-signal - Value 2 next planet
+  ]]
+     cache_row.description_done = true
+  end
+
+  if not section then
+     control_behavior.add_section()
+     section = control_behavior.get_section(1)
+  end
+
+  if not section.is_manual then
+     for _,sec in ipairs(control_behavior.sections) do
+        if sec.is_manual then
+           section = sec
+           break
+        end
+     end
+  end
+
+  local slots = cache_row.slots
+  for _, param in ipairs(parameters) do
+    local key = slot_key(param)
+    if slots[param.index] ~= key then
+      if param.signal then
+        param.signal.quality = "normal"
+        section.set_slot(
+          param.index,
+          {
+            value = param.signal,
+            min = param.count,
+            max = param.count
+          }
+        )
+      else
+        section.clear_slot(param.index)
+      end
+      slots[param.index] = key
+    end
+  end
   return true
 end
 
@@ -154,6 +170,7 @@ function warp_constant_combinator.rescan()
   for key in pairs(entities) do
     entities[key] = nil
   end
+  storage.warptorio.combinator_slot_cache = {}
 
   for _, surface in pairs(game.surfaces) do
     local found = surface.find_entities_filtered({name = warp_settings.combinator.name})
@@ -192,11 +209,10 @@ function warp_constant_combinator.refresh()
   }, "|")
 
   storage.warptorio.combinator_cache = storage.warptorio.combinator_cache or {}
-  local cache = storage.warptorio.combinator_cache
-  if cache.key == key then
+  if storage.warptorio.combinator_cache.key == key then
     return
   end
-  cache.key = key
+  storage.warptorio.combinator_cache.key = key
 
   local state = {
     remaining_time = remaining_time,
@@ -206,11 +222,21 @@ function warp_constant_combinator.refresh()
     in_transition = in_transition,
     transition_time = transition_time,
   }
+  local parameters = get_parameters(state)
+
+  storage.warptorio.combinator_slot_cache = storage.warptorio.combinator_slot_cache or {}
+  local slot_cache = storage.warptorio.combinator_slot_cache
 
   for unit_number, entity in pairs(entities) do
-    local ok = update_entity(entity, state)
+    local row = slot_cache[unit_number]
+    if not row then
+      row = {description_done = false, slots = {}}
+      slot_cache[unit_number] = row
+    end
+    local ok = update_entity(entity, parameters, row)
     if not ok then
       entities[unit_number] = nil
+      slot_cache[unit_number] = nil
     end
   end
 end
