@@ -240,6 +240,16 @@ function train_code.resolve_train_destination(surface_name, station_name)
    return nil
 end
 
+-- Puts a speech bubble on the train's front stock, falling back to chat.
+local function speak_on_train(train, msg, seconds)
+   local front = train and train.front_stock
+   if front and front.valid then
+      speech_bubbles.speak(front, msg, seconds or 5)
+   else
+      game.print(msg, {color={1,0.6,0}})
+   end
+end
+
 function train_code.queue_retry(train, station_name, reason_msg)
    local queue = pending_warps()
    local pending = queue[train.id]
@@ -249,12 +259,7 @@ function train_code.queue_retry(train, station_name, reason_msg)
    end
    if not pending.warned and game.tick - pending.queued_at >= warp_settings.train.retry_warn_after then
       if not warp_settings.train.block_info_messages then
-         local capacitor = storage.warptorio and storage.warptorio.power and storage.warptorio.power[1]
-         if capacitor and capacitor.valid then
-            speech_bubbles.speak(capacitor, reason_msg, 5)
-         else
-            game.print(reason_msg, {color={1,0.6,0}})
-         end
+         speak_on_train(train, reason_msg, 5)
       end
       pending.warned = true
    end
@@ -444,7 +449,17 @@ end
 -- destination is the surface name the train should warp to. The caller decides it based on
 -- which warp station the train stopped at (ground floor, garden floor, or factory).
 function train_code.warp_trains(train, station_name, destination)
-   if not game.forces["player"].technologies[shared.techs.train].researched then return end
+   if not game.forces["player"].technologies[shared.techs.train].researched then
+      -- Hard gate: tell the player once per parking. The train warps itself as
+      -- soon as the tech is researched (scan_for_parked_warps keeps polling it).
+      local queue = pending_warps()
+      local pending = queue[train.id]
+      if not pending then
+         queue[train.id] = { station_name = station_name, queued_at = game.tick, warned = true }
+         speak_on_train(train, {"warptorio.train-warp-needs-research"}, 5)
+      end
+      return
+   end
    if not train or not train.valid or not train.id then return end
 
    local stations = game.train_manager.get_train_stops({station_name=station_name})
@@ -573,12 +588,7 @@ function train_code.warp_single_train(train, destination, target_station, source
    local new_train = train_code.warp_array(
       train.carriages, destination, target_station, source_station)
    if not new_train then
-      local capacitor = storage.warptorio and storage.warptorio.power and storage.warptorio.power[1]
-      if capacitor and capacitor.valid then
-         speech_bubbles.speak(capacitor, {"warptorio.train-warp-error"}, 5)
-      else
-         game.print({"warptorio.train-warp-error"}, { color = { 1, 0, 0 } })
-      end
+      speak_on_train(train, {"warptorio.train-warp-error"}, 5)
       -- Source train is still parked and intact (clones were rolled back), so
       -- queue a retry instead of giving up.
       train_code.queue_retry(train, source_station.backer_name, {"warptorio.train-warp-error"})
