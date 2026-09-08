@@ -70,4 +70,17 @@ shared.techs = {
   train = "warp-train",
 }
 
+-- Custom events defined in data stage. Other mods subscribe with:
+--   script.on_event(defines.events["warptorio-warp-finished"], handler)
+-- Their handlers receive the data table documented in modules/events.lua.
+shared.events = {
+  warp_started = "warptorio-warp-started",
+  warp_finished = "warptorio-warp-finished",
+  planet_chosen = "warptorio-planet-chosen",
+  wave_spawned = "warptorio-wave-spawned",
+  boss_spawned = "warptorio-boss-spawned",
+  game_over = "warptorio-game-over",
+  game_win = "warptorio-game-win",
+}
+
 return shared

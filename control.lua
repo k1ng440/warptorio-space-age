@@ -1,4 +1,5 @@
 local shared = require("shared")
+local events = require("modules.events")
 local warp_settings = require("internal_settings")
 local map_gens = require("map_gens")
 local train_code = require("train")
@@ -17,6 +18,7 @@ local warp_vote = require("modules.warp_vote")
 local speech_bubbles = require("modules.speech_bubbles")
 local minimap = require("modules.minimap")
 local teleporter_visualize = require("modules.teleporter_visualize")
+local compat_repair_turret = require("modules.compat_repair_turret")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -719,6 +721,7 @@ local function new_random_surface(name)
   else
     -- clear planets and reconect surfaces
     if game.planets[storage.warptorio.surface_name].surface and storage.warptorio.surface_name ~= surface_name then
+      compat_repair_turret.destroy_before_clear(game.planets[storage.warptorio.surface_name].surface)
       game.planets[storage.warptorio.surface_name].surface.clear()
       game.delete_surface(game.planets[storage.warptorio.surface_name].surface.name)
     end
@@ -1455,8 +1458,21 @@ local function check_wave()
           end
           if not technology_check() then break end
       end
+      events.raise(shared.events.boss_spawned, {
+         index = storage.warptorio.wave_index,
+         count = max,
+         quality = quality,
+         surface = storage.warptorio.warp_zone,
+      })
     end
     storage.warptorio.wave_index = storage.warptorio.wave_index + 1
+    events.raise(shared.events.wave_spawned, {
+       index = storage.warptorio.wave_index,
+       amount = amount,
+       boss = spawn_boss,
+       quality = quality,
+       surface = storage.warptorio.warp_zone,
+    })
     if game.forces["player"].current_research and game.forces["player"].current_research.name == shared.techs.end_win then
        if storage.warptorio.wave_index < warp_settings.biter.final_offset then
           storage.warptorio.wave_index = warp_settings.biter.final_offset
@@ -1749,6 +1765,13 @@ local function next_warp_zone_prepare(forced, go_home)
     prepare_surface_spawn(surface, name, not storage.warptorio.void)
     storage.warptorio.previous_surface_wave = storage.warptorio.wave_index
     storage.warptorio.previous_surface_time = storage.warptorio.wave_time
+    events.raise(shared.events.warp_started, {
+       from_surface = storage.warptorio.surface_name,
+       target = surface and surface.name,
+       planet = storage.warptorio.planet_next,
+       index = storage.warporio.index,
+       forced = forced,
+    })
 end
 
 local function next_warp_zone_finish()
@@ -1822,6 +1845,7 @@ local function next_warp_zone_finish()
     if extra_time then storage.warptorio.wave_time = storage.warptorio.wave_time + warp_settings.biter.extra_time_amount end
     create_void_platform(source,true)
     if storage.warptorio.old_surface and game.surfaces[storage.warptorio.old_surface] and game.surfaces[storage.warptorio.old_surface].valid then
+      compat_repair_turret.destroy_before_clear(game.surfaces[storage.warptorio.old_surface])
       game.delete_surface(storage.warptorio.old_surface)
     end
     storage.warptorio.old_surface = storage.warptorio.warp_zone
@@ -1874,6 +1898,13 @@ local function next_warp_zone_finish()
    clear_transition_asteroids()
    platform_code.on_warp(source,name)
    warp_constant_combinator.rescan()
+   events.raise(shared.events.warp_finished, {
+      surface = name,
+      previous_surface = storage.warptorio.previous_surface_1,
+      planet = storage.warptorio.planet_next,
+      index = storage.warporio.index,
+      factory_level = storage.warptorio.factory_level,
+   })
 end
 
 local function shuffle(tbl)
@@ -2089,6 +2120,10 @@ local function roll_planet()
         game.play_sound({path="planet-change",volume_modifier=0.5})
      end
   end
+  events.raise(shared.events.planet_chosen, {
+     planet = surface_name,
+     index = storage.warporio.index,
+  })
 
 end
 
@@ -2176,6 +2211,10 @@ local function trigger_game_over()
     game.print({"warptorio.capacitor-destroyed"})
     game.set_lose_ending_info{title={"warptorio.lose-screen-title"}, message={"warptorio.lose-screen-text"}}
     game.set_game_state{game_finished=true, player_won=false, can_continue=true}
+    events.raise(shared.events.game_over, {
+       surface = storage.warptorio.warp_zone,
+       index = storage.warporio.index,
+    })
 end
 script.on_event(defines.events.on_tick, function(event)
 if not storage.warporio then
@@ -2538,6 +2577,10 @@ local techs = {
    {
       name = warp_settings.techs.win,
       func = function ()
+         events.raise(shared.events.game_win, {
+            index = storage.warporio.index,
+            factory_level = storage.warptorio.factory_level,
+         })
          game.set_win_ending_info{title={"warptorio.end-screen-title"}, message={"warptorio.end-screen-text"}}
          game.set_game_state{game_finished=true,player_won=true,can_continue=true}
       end
@@ -2815,6 +2858,16 @@ remote.add_interface("warptorio",
      add_ground_platform_design = platform_code.add,
      list_ground_platform_design = platform_code.list,
      spawn_random_ground_platform_design = platform_code.spawn_random,
+     -- Event names this mod raises via script.raise_event; subscribe with
+     -- script.on_event(defines.events[name], handler). Values are also listed
+     -- in shared.events in the mod source.
+     get_events = function()
+        local names = {}
+        for _, name in pairs(shared.events) do
+           names[#names + 1] = name
+        end
+        return names
+     end,
   }
 )
 if warpcheat then

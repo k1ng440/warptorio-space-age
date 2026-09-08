@@ -42,3 +42,31 @@ Here is short tutorial how to do it.
 6. locate new variants in .factorio/script-output and transform them from json back to lua
 7. Make a mod that depends on warptorio
 8. In your mod add your variants using this remote interface  ```remote.call("warptorio", "edit_planet_variants", variant,planet,map_gen_settings)```
+
+## Events API
+
+Warptorio raises custom events at the key moments of the warp cycle. Since `0.4.11` they are registered as data stage `custom-event` prototypes, so **no load order is required** — just subscribe like any built-in event:
+
+```lua
+script.on_event(defines.events["warptorio-warp-finished"], function(event)
+  game.print("Arrived on " .. event.surface)
+end)
+```
+
+Available events and their payloads:
+
+| Event | When | Payload fields |
+| --- | --- | --- |
+| `warptorio-warp-started` | transition begins | `from_surface`, `target`, `planet`, `index`, `forced` |
+| `warptorio-warp-finished` | landed on new surface | `surface`, `previous_surface`, `planet`, `index`, `factory_level` |
+| `warptorio-planet-chosen` | next planet announced | `planet`, `index` |
+| `warptorio-wave-spawned` | enemy wave spawned | `index`, `amount`, `boss`, `quality`, `surface` |
+| `warptorio-boss-spawned` | boss wave spawned | `index`, `count`, `quality`, `surface` |
+| `warptorio-game-over` | capacitor destroyed | `surface`, `index` |
+| `warptorio-game-win` | final research complete | `index`, `factory_level` |
+
+`index` is the warp counter (1 on first warp), `surface`/`target` are surface names, `quality` is the enemy quality class (`"normal"` or `"warp"`). List the event names at runtime with:
+
+```lua
+remote.call("warptorio", "get_events")
+```

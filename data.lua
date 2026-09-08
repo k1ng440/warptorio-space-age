@@ -558,3 +558,19 @@ data:extend{{
    consuming = "none",
    action = "lua",
 }}
+
+-- Cross-mod custom events, raised in modules/events.lua.
+-- Other mods subscribe: script.on_event(defines.events["warptorio-..."], handler)
+local custom_events = {}
+for _, name in ipairs({
+  shared.events.warp_started,
+  shared.events.warp_finished,
+  shared.events.planet_chosen,
+  shared.events.wave_spawned,
+  shared.events.boss_spawned,
+  shared.events.game_over,
+  shared.events.game_win,
+}) do
+  custom_events[#custom_events + 1] = { type = "custom-event", name = name }
+end
+data:extend(custom_events)

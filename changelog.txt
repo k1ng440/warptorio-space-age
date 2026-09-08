@@ -1,4 +1,15 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.11
+Date: 2026-09-09
+  Changes:
+    - Added custom events for other mods: warptorio-warp-started, warptorio-warp-finished,
+      warptorio-planet-chosen, warptorio-wave-spawned, warptorio-boss-spawned,
+      warptorio-game-over, warptorio-game-win (subscribe via script.on_event on
+      defines.events["warptorio-..."], see README "Events API" section)
+    - Added remote.call("warptorio", "get_events") to list all raised event names
+    - Fix: Repair Turret mod crash when clearing planet surfaces — destroy repair-turrets
+      with raise_destroy before clear/delete so the mod cleans its surface-index registry
+---------------------------------------------------------------------------------------------------
 Version: 0.4.5
 Date: 2026-09-07
   Changes:
