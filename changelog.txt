@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.12
+Date: 2026-09-09
+  Changes:
+    - Player teleport now plays a full multi-layer FX: 3-layer glow blast, 16 shockwave rings and
+      a spark burst (ported from factorio-ultracube, GPLv3), replacing the railgun-beam + circle ring
+    - Teleport boom sound now fires ~8 ticks after arrival, played per-player so it is always audible
+---------------------------------------------------------------------------------------------------
 Version: 0.4.11
 Date: 2026-09-09
   Changes:
