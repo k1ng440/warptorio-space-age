@@ -1,3 +1,4 @@
+local shared = require("shared")
 local warp_settings = require("internal_settings")
 local map_gens = require("map_gens")
 local train_code = require("train")
@@ -52,7 +53,7 @@ local function generate_cross(width, height,arm_width)
     for y = -half_height, half_height-1 do
         for x = -half_width, half_width-1 do
             if (y >= -arm_width and y < arm_width) or (x >= -arm_width and x < arm_width) then
-                table.insert(tiles, create_tile("warp_tile_platform", x, y))
+                table.insert(tiles, create_tile(shared.tiles.factory, x, y))
             else
                 table.insert(tiles, create_tile("out-of-map", x, y))
             end
@@ -442,7 +443,7 @@ script.on_event(defines.events.on_chunk_generated, function(e)
 	for x=minx-1, maxx do
 		for y=miny-1, maxy do
       if x < platform and x > -(platform+1) and y < platform and y > - (platform+1) then
-          table.insert(tiles, {name="warp_tile_platform", position={x,y}})
+          table.insert(tiles, {name=shared.tiles.factory, position={x,y}})
           start_area = true
       else
 	        table.insert(tiles, {name="out-of-map", position={x,y}})
@@ -509,7 +510,7 @@ end
 
 local function refresh_power_and_teleport(dest)
    local dest = dest or storage.warptorio.warp_zone
-    storage.warptorio.power_name = storage.warptorio.power_name or "warp-power"
+    storage.warptorio.power_name = storage.warptorio.power_name or shared.power[1]
     local dest_obj = game.surfaces[dest]
     if not dest_obj or not dest_obj.valid then
        log("Warning: refresh_power_and_teleport skipped, surface \"" .. tostring(dest) .. "\" is missing")
@@ -566,25 +567,25 @@ local function refresh_power_and_teleport(dest)
 
     local t_surface = game.surfaces[dest]
     if t_surface and t_surface.valid then
-       for _, c in pairs(t_surface.find_entities_filtered{name="warp_2x2-container"}) do
+       for _, c in pairs(t_surface.find_entities_filtered{name=shared.container}) do
           if c.valid then c.destroy() end
        end
     end
     
     if storage.warptorio.container_left_enabled then
-      local container = get_or_create("warp_2x2-container",{x=-2,y=0,surface=dest})
+      local container = get_or_create(shared.container,{x=-2,y=0,surface=dest})
       local inventory = container.get_inventory(defines.inventory.chest)
-      if inventory.get_item_count("warp_2x2-container") == 0 then
-        container.insert({name="warp_2x2-container", count=1})
+      if inventory.get_item_count(shared.container) == 0 then
+        container.insert({name=shared.container, count=1})
       end
       container.minable_flag = false
       container.rotatable = false
     end
     if storage.warptorio.container_right_enabled then
-      local container = get_or_create("warp_2x2-container",{x=2,y=0,surface=dest})
+      local container = get_or_create(shared.container,{x=2,y=0,surface=dest})
       local inventory = container.get_inventory(defines.inventory.chest)
-      if inventory.get_item_count("warp_2x2-container") == 0 then
-        container.insert({name="warp_2x2-container", count=1})
+      if inventory.get_item_count(shared.container) == 0 then
+        container.insert({name=shared.container, count=1})
       end
       container.minable_flag = false
       container.rotatable = false
@@ -611,16 +612,16 @@ local function update_factory_platform(e)
   local tiles = {}
   
   if warp_settings.factory.shape == "ellipse" then
-     tiles = generate_ellipse(platform.width,platform.height,"warp_tile_platform")
+     tiles = generate_ellipse(platform.width,platform.height,shared.tiles.factory)
   elseif warp_settings.factory.shape == "hexagon" then
-     tiles = generate_hexagon(platform.width/2,"warp_tile_platform")
+     tiles = generate_hexagon(platform.width/2,shared.tiles.factory)
   else
      tiles = generate_cross(platform.width,platform.height,platform.arm)
   end
 
 	--for x=minx-1, maxx do
 	--	for y=miny-1, maxy do
-  --    table.insert(tiles, {name="warp_tile_platform", position={x,y}})
+  --    table.insert(tiles, {name=shared.tiles.factory, position={x,y}})
   --  end
 	--end
   game.surfaces["factory"].set_tiles(tiles)  
@@ -630,9 +631,9 @@ local function update_factory_platform(e)
       -- This is horrible fix, but it will do for now
       local tiles = generate_rectangle((platform.width*2)-4,(platform.height*2)-4,"hazard-concrete-left")
       game.surfaces["factory"].set_tiles(tiles)
-      local tiles = generate_rectangle((platform.width*2)-8,(platform.height*2)-4,"warp_tile_platform")
+      local tiles = generate_rectangle((platform.width*2)-8,(platform.height*2)-4,shared.tiles.factory)
       game.surfaces["factory"].set_tiles(tiles)
-      local tiles = generate_rectangle((platform.width*2)-4,(platform.height*2)-8,"warp_tile_platform")
+      local tiles = generate_rectangle((platform.width*2)-4,(platform.height*2)-8,shared.tiles.factory)
       game.surfaces["factory"].set_tiles(tiles)
   elseif level == 2 then
       game.print({"warptorio.help-text-2",warp_settings.trigger_research})
@@ -742,8 +743,8 @@ local function belt_pair(pos1,pos2,speed)
     local belt = nil
     local belt2 = nil
 
-  	belt = get_or_create("warp-platform-belt-"..speed,pos1)
-    belt2 = get_or_create("warp-platform-belt-"..speed,pos2)
+  	belt = get_or_create(shared.belt.prefix..speed,pos1)
+    belt2 = get_or_create(shared.belt.prefix..speed,pos2)
 
     if belt == nil or belt2 == nil then
       --game.print("Belt link error")
@@ -777,7 +778,7 @@ local function update_belt_biochamber()
 
     for i,v in ipairs(speed) do
       if i ~= level then
-        table.insert(names,"warp-platform-belt-"..v)
+        table.insert(names,shared.belt.prefix..v)
       end
     end
 
@@ -826,7 +827,7 @@ local function update_biochamber_platform(e)
   end
   
   -- Generate warp_tile_platform base for this upgrade's extension.
-  local tiles = generate_rectangle(platform.width, platform.height, "warp_tile_platform", platform.offset_x, platform.offset_y)
+  local tiles = generate_rectangle(platform.width, platform.height, shared.tiles.factory, platform.offset_x, platform.offset_y)
   game.surfaces["garden"].set_tiles(tiles) 
 
   -- warp belt garden 	
@@ -865,7 +866,7 @@ local function update_biochamber_platform(e)
   refresh_power_and_teleport()
   
   if level == 1 then
-      local container = get_or_create("warp_2x2-container", {x=5, y=0, surface="garden"})
+      local container = get_or_create(shared.container, {x=5, y=0, surface="garden"})
       container.minable_flag = false
       container.rotatable = false
   end
@@ -896,7 +897,7 @@ local function update_reactor_platform(e)
   end
   
   -- Generate warp_tile_platform base for this upgrade's extension.
-  local tiles = generate_rectangle(platform.width, platform.height, "warp_tile_platform", -platform.offset_x, -platform.offset_y)
+  local tiles = generate_rectangle(platform.width, platform.height, shared.tiles.factory, -platform.offset_x, -platform.offset_y)
   game.surfaces["garden"].set_tiles(tiles) 
 
 end
@@ -987,17 +988,17 @@ local function update_ground_platform(e)
   game.print({"warptorio.platform-animation-starting"})
 
   if mode == "repair" then
-    local new_tiles = generate_ground_shape(dest, platform*2, "warp_tile_world")
+    local new_tiles = generate_ground_shape(dest, platform*2, shared.tiles.ground)
     platform_animation.start_gradual_repair(dest, new_tiles, center)
   else
-    local tiles = generate_ground_shape(dest, platform*2,"warp_tile_world")
+    local tiles = generate_ground_shape(dest, platform*2,shared.tiles.ground)
     game.surfaces[dest].set_tiles(tiles)
     local old_tiles = {}
     if previous_level and previous_level > 0 then
       local old_size = warp_settings.floor.levels[previous_level] * 2
-      old_tiles = generate_ground_shape(dest, old_size, "warp_tile_world")
+      old_tiles = generate_ground_shape(dest, old_size, shared.tiles.ground)
     end
-    local new_tiles = generate_ground_shape(dest, platform*2, "warp_tile_world")
+    local new_tiles = generate_ground_shape(dest, platform*2, shared.tiles.ground)
     platform_animation.animate_ground_platform(
       game.surfaces[dest],
       old_tiles,
@@ -1272,7 +1273,7 @@ local function update_belt(e)
 
     for i,v in ipairs(speed) do
       if i ~= level then
-        table.insert(names,"warp-platform-belt-"..v)
+        table.insert(names,shared.belt.prefix..v)
       end
     end
 
@@ -1295,7 +1296,7 @@ end
 local function technology_check()
   if storage.warptorio and storage.warptorio.transition_timer and storage.warptorio.transition_timer > 60 then return false end
   if not game.forces["player"].current_research then return false end
-  if game.forces["player"].current_research.name == "warp-end-prepare" or game.forces["player"].current_research.name == "warp-end-win" then
+  if game.forces["player"].current_research.name == shared.techs.end_prepare or game.forces["player"].current_research.name == shared.techs.end_win then
     return true
   end
   return false
@@ -1339,7 +1340,7 @@ local function choose_quality(index)
    end
    -- During the final research, lock enemy quality to "warp" instead of scaling it
    -- from evolution/index like normal waves.
-   if game.forces["player"].current_research and game.forces["player"].current_research.name == "warp-end-win" then
+   if game.forces["player"].current_research and game.forces["player"].current_research.name == shared.techs.end_win then
       return "warp"
    end
    local evolution = get_evolution_factor()
@@ -1456,7 +1457,7 @@ local function check_wave()
       end
     end
     storage.warptorio.wave_index = storage.warptorio.wave_index + 1
-    if game.forces["player"].current_research and game.forces["player"].current_research.name == "warp-end-win" then
+    if game.forces["player"].current_research and game.forces["player"].current_research.name == shared.techs.end_win then
        if storage.warptorio.wave_index < warp_settings.biter.final_offset then
           storage.warptorio.wave_index = warp_settings.biter.final_offset
        end
@@ -1484,7 +1485,7 @@ local function clean_ground_tiles(surface_name, area)
     if base_name then
       table.insert(replacement, {name = base_name, position = t.position})
     elseif t.name:find("^lava") then
-      table.insert(replacement, {name = "warp_tile_world", position = t.position})
+      table.insert(replacement, {name = shared.tiles.ground, position = t.position})
     end
   end
   if #replacement > 0 then
@@ -1693,14 +1694,14 @@ local function next_warp_zone_prepare(forced, go_home)
     end
 
     -- fix research if someone is trying to cheat
-    if game.forces["player"].technologies["warp-end-prepare"].saved_progress > 0 and game.forces["player"].technologies["warp-end-prepare"].researched == false then
+    if game.forces["player"].technologies[shared.techs.end_prepare].saved_progress > 0 and game.forces["player"].technologies[shared.techs.end_prepare].researched == false then
       game.print({"warptorio.technology-cheater"})
-      game.forces["player"].technologies["warp-end-prepare"].saved_progress = 0
+      game.forces["player"].technologies[shared.techs.end_prepare].saved_progress = 0
     end
 
-    if game.forces["player"].technologies["warp-end-win"].saved_progress > 0 and game.forces["player"].technologies["warp-end-win"].researched == false then
+    if game.forces["player"].technologies[shared.techs.end_win].saved_progress > 0 and game.forces["player"].technologies[shared.techs.end_win].researched == false then
       game.print({"warptorio.technology-cheater"})
-      game.forces["player"].technologies["warp-end-win"].saved_progress = 0
+      game.forces["player"].technologies[shared.techs.end_win].saved_progress = 0
     end
 
     if technology_check() then
@@ -1786,7 +1787,7 @@ local function next_warp_zone_finish()
     end
     local source_surface_obj = game.surfaces[source]
     if source_surface_obj and source_surface_obj.valid then
-       for _, c in pairs(source_surface_obj.find_entities_filtered{name="warp_2x2-container"}) do
+       for _, c in pairs(source_surface_obj.find_entities_filtered{name=shared.container}) do
           if c.valid then c.destroy() end
        end
     end
@@ -1837,7 +1838,7 @@ local function next_warp_zone_finish()
         if inventory then
           for j = 1, #inventory do
             local stack = inventory[j]
-            if stack.valid_for_read and stack.name == "warp_2x2-container" then
+            if stack.valid_for_read and stack.name == shared.container then
               stack.clear()
             end
           end
@@ -1907,7 +1908,7 @@ local function next_warp_zone_space()
 
    local space_source_surface = game.surfaces[source]
    if space_source_surface and space_source_surface.valid then
-      for _, c in pairs(space_source_surface.find_entities_filtered{name="warp_2x2-container"}) do
+      for _, c in pairs(space_source_surface.find_entities_filtered{name=shared.container}) do
          if c.valid then c.destroy() end
       end
    end
@@ -2069,7 +2070,7 @@ local function roll_planet()
     end
   end
 
-  if game.forces["player"].technologies["warp-end-prepare"].researched then
+  if game.forces["player"].technologies[shared.techs.end_prepare].researched then
      local r = math.random()
      if storage.warptorio.travel_to_edge then
         storage.warptorio.travel_to_edge = false
@@ -2430,7 +2431,7 @@ local function update_power(e)
 
     local e_level = mysplit(e,"-")
     level = tonumber(e_level[#e_level])
-    storage.warptorio.power_name = "warp-power-"..(level+1)
+    storage.warptorio.power_name = shared.power[level+1]
 end
 
 local function build_entity(e)
@@ -2454,7 +2455,7 @@ local function build_entity(e)
          return
       end
    end
-   if e.entity.name == "warp_2x2-container" then
+   if e.entity.name == shared.container then
        if storage.warptorio.container and storage.warptorio.container.valid then
           speech_bubbles.notify(e.player_index and game.players[e.player_index], {"warptorio.container-placed-error"}, 4, {1,0,0})
           e.entity.destroy()
@@ -2561,7 +2562,7 @@ end)
 
 
 script.on_event(defines.events.on_lua_shortcut, function(e)
-    if e.prototype_name == "warptorio-teleport" then
+    if e.prototype_name == shared.shortcut_teleport then
       --player_teleport.check_teleport(game.players[e.player_index],{x=-1,y=-2,surface=storage.warptorio.warp_zone},"factory")
       if storage.warptorio.factory_level > 0 then
          local player = game.players[e.player_index]
@@ -2604,7 +2605,7 @@ script.on_event(defines.events.on_robot_built_entity, function(e)
 end)
 
 script.on_event(defines.events.on_player_mined_entity, function(e)
-    if e.entity.name == "warp_2x2-container" then
+    if e.entity.name == shared.container then
        speech_bubbles.notify(game.players[e.player_index], {"warptorio.container-removed"}, 3)
        storage.warptorio.container = nil
     end
@@ -2612,7 +2613,7 @@ script.on_event(defines.events.on_player_mined_entity, function(e)
 end)
 
 script.on_event(defines.events.on_robot_mined_entity, function(e)
-    if e.entity.name == "warp_2x2-container" then
+    if e.entity.name == shared.container then
        local player = game.players[1]
        if player and player.connected then
           speech_bubbles.notify(player, {"warptorio.container-removed"}, 3)
@@ -2732,7 +2733,7 @@ script.on_event(defines.events.script_raised_revive, function(e)
 end)
 
 local function is_protected_warp_entity(entity)
-    if entity.name == "warp_2x2-container" then return true end
+    if entity.name == shared.container then return true end
     if not storage.warptorio or not storage.warptorio.power then return false end
     if not storage.warptorio.power_unit_number then
         storage.warptorio.power_unit_number = {}

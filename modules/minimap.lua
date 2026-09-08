@@ -1,3 +1,4 @@
+local shared = require("shared")
 local warp_settings = require("internal_settings")
 
 local M = {}
@@ -160,10 +161,10 @@ local function on_ground_minimap_scroll(event, direction)
   sync_ground_minimap(player)
 end
 
-script.on_event("warptorio-ground-minimap-zoom-in", function(e)
+script.on_event(shared.input_minimap_zoom_in, function(e)
   on_ground_minimap_scroll(e, 1)
 end)
-script.on_event("warptorio-ground-minimap-zoom-out", function(e)
+script.on_event(shared.input_minimap_zoom_out, function(e)
   on_ground_minimap_scroll(e, -1)
 end)
 
@@ -245,7 +246,7 @@ function M.on_click(event)
 end
 
 function M.on_shortcut(event)
-  if event.prototype_name == "warptorio-ground-minimap-toggle" then
+  if event.prototype_name == shared.shortcut_minimap_toggle then
     local player = game.get_player(event.player_index)
     if player then
       storage.warptorio.minimap_toggled = storage.warptorio.minimap_toggled or {}
@@ -253,7 +254,7 @@ function M.on_shortcut(event)
       if toggled == nil then toggled = true end
       toggled = not toggled
       storage.warptorio.minimap_toggled[player.index] = toggled
-      player.set_shortcut_toggled("warptorio-ground-minimap-toggle", toggled)
+      player.set_shortcut_toggled(shared.shortcut_minimap_toggle, toggled)
       sync_ground_minimap(player)
     end
     return true

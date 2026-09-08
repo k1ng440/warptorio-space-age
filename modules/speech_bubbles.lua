@@ -1,3 +1,5 @@
+local shared = require("shared")
+
 local M = {}
 
 function M.speak(entity, text, seconds)
@@ -14,7 +16,7 @@ function M.speak(entity, text, seconds)
   end
 
   local bubble = entity.surface.create_entity({
-    name = "warptorio_speech_bubble",
+    name = shared.speech_bubble,
     text = { "", "[font=default-large-bold]", text, "[/font]" },
     position = { 0, 0 },
     source = entity,

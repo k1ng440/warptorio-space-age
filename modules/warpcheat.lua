@@ -1,3 +1,4 @@
+local shared = require("shared")
 local env
 local module = {}
 
@@ -294,7 +295,7 @@ function module.handle_click(event)
       player.print("Garden surface not available")
     end
   elseif name == "warpcheat-chest" then
-    local inserted = player.insert{name="warp_2x2-container", count=1}
+    local inserted = player.insert{name=shared.container, count=1}
     if inserted > 0 then
       player.print("Gave a warpchest")
     else

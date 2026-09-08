@@ -1,3 +1,4 @@
+local shared = require("shared")
 local warp_settings = require("internal_settings")
 local speech_bubbles = require("modules.speech_bubbles")
 
@@ -443,7 +444,7 @@ end
 -- destination is the surface name the train should warp to. The caller decides it based on
 -- which warp station the train stopped at (ground floor, garden floor, or factory).
 function train_code.warp_trains(train, station_name, destination)
-   if not game.forces["player"].technologies["warp-train"].researched then return end
+   if not game.forces["player"].technologies[shared.techs.train].researched then return end
    if not train or not train.valid or not train.id then return end
 
    local stations = game.train_manager.get_train_stops({station_name=station_name})

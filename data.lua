@@ -1,3 +1,4 @@
+local shared = require("shared")
 require("research")
 require("tips")
 require("prototypes/entities")
@@ -64,7 +65,7 @@ end
 --shortcut
 local shortcut = {
   type="shortcut",
-  name="warptorio-teleport",
+  name=shared.shortcut_teleport,
   action="lua",
   icon="__warptorio-space-age-edge__/graphics/home.png",
   small_icon="__warptorio-space-age-edge__/graphics/home.png"
@@ -74,7 +75,7 @@ data:extend{shortcut}
 --shortcut to toggle ground minimap
 local minimap_shortcut = {
   type="shortcut",
-  name="warptorio-ground-minimap-toggle",
+  name=shared.shortcut_minimap_toggle,
   action="lua",
   toggleable=true,
   icon="__warptorio-space-age-edge__/graphics/map.png",
@@ -173,7 +174,7 @@ local tile_platform = table.deepcopy(data.raw["tile"][settings.startup["warptori
 tile_platform.minable_properties = {
   minable = false
 }
-tile_platform.name = "warp_tile_platform"
+tile_platform.name = shared.tiles.factory
 
 local function set_destructable(tile,name)
    if tile.max_health then
@@ -198,7 +199,7 @@ end
 
 local foundation = data.raw["tile"]["space-platform-foundation"]
 local tile_world = table.deepcopy(data.raw["tile"][settings.startup["warptorio_ground-tile"].value])
-set_destructable(tile_world,"warp_tile_world")
+set_destructable(tile_world,shared.tiles.ground)
 
 local function copy_build_animations(target, source)
   if not source then return end
@@ -233,7 +234,7 @@ if foundation then
     if #layers > 0 then
       data:extend{{
         type = "explosion",
-        name = "warptorio-platform-build-anim",
+        name = shared.platform_build_anim,
         flags = {"not-on-map"},
         animations = {{layers = layers}},
         sound = nil,
@@ -250,7 +251,7 @@ data:extend{tile_platform,tile_world}
    end
    end]]
 
-local belt_speeds = { 15, 30, 45, 60 }
+local belt_speeds = shared.belt.speeds
 local belt_color = {
   {1,1,0.5},
   {1,0.5,0.5},
@@ -263,14 +264,14 @@ for i,v in ipairs(belt_speeds) do
   belt.minable_properties = {
     minable = false
   }
-  belt.name = "warp-platform-belt-"..v
+  belt.name = shared.belt.prefix..v
   tint_any_graphics(belt, belt_color[i])
   --belt.pictures.layers[1].tint = belt_color[i]
   data:extend{belt}
 end
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
-acc.name = "warp-power"
+acc.name = shared.power[1]
 acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
@@ -286,7 +287,7 @@ acc.energy_source = -- energy source of accumulator
 data:extend{acc}
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
-acc.name = "warp-power-2"
+acc.name = shared.power[2]
 acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
@@ -302,7 +303,7 @@ acc.energy_source = -- energy source of accumulator
 data:extend{acc}
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
-acc.name = "warp-power-3"
+acc.name = shared.power[3]
 acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
@@ -352,26 +353,26 @@ support.support_range = support.support_range * 3
 
 data:extend{{
       type = "sound",
-      name = "warp-start",
+      name = shared.sounds.warp_start,
       filename = "__warptorio-space-age-edge__/sounds/warp_start.wav",
       category = "environment",
 }}
 
 data:extend{{
       type = "sound",
-      name = "warp-end",
+      name = shared.sounds.warp_end,
       filename = "__warptorio-space-age-edge__/sounds/warp_end.wav",
       category = "environment",
 }}
 data:extend{{
       type = "sound",
-      name = "planet-change",
+      name = shared.sounds.planet_change,
       filename = "__warptorio-space-age-edge__/sounds/planet_change.wav",
       category = "alert",
 } }
 data:extend{{
       type = "sound",
-      name = "boss-spawn",
+      name = shared.sounds.boss_spawn,
       filename = "__warptorio-space-age-edge__/sounds/boss_spawn.wav",
       category = "alert",
 }}
@@ -483,7 +484,7 @@ if mods["quality"] then
 data.extend({
    {
       type = "quality",
-      name = "warp",
+      name = shared.quality_warp,
       level = 11,
       color = {194, 54, 22},
       order = "f",
@@ -545,14 +546,14 @@ data:extend{set_my_data(name, map_gen_settings)}]]
 -- ground minimap zoom controls
 data:extend{{
    type = "custom-input",
-   name = "warptorio-ground-minimap-zoom-in",
+   name = shared.input_minimap_zoom_in,
    key_sequence = "mouse-wheel-up",
    consuming = "none",
    action = "lua",
 }}
 data:extend{{
    type = "custom-input",
-   name = "warptorio-ground-minimap-zoom-out",
+   name = shared.input_minimap_zoom_out,
    key_sequence = "mouse-wheel-down",
    consuming = "none",
    action = "lua",

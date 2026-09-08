@@ -1,3 +1,4 @@
+local shared = require("shared")
 local warp_settings = require("internal_settings")
 
 local M = {}
@@ -57,7 +58,7 @@ end
 
 function M.play_teleport_sound(surface, position)
   if surface and surface.valid then
-    surface.play_sound{path="warptorio-teleport", position=position}
+    surface.play_sound{path=shared.sounds.teleport, position=position}
   end
 end
 
@@ -80,7 +81,7 @@ script.on_nth_tick(2, function()
       M.play_teleport_sound(surface, s.position)
       local p = game.get_player(s.player_index)
       if p and p.connected and p.controller_type == defines.controllers.character then
-        p.play_sound{path="warptorio-teleport", position=s.position}
+        p.play_sound{path=shared.sounds.teleport, position=s.position}
       end
     end
   end

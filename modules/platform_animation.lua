@@ -1,3 +1,5 @@
+local shared = require("shared")
+
 local platform_animation = {}
 
 local function position_key(x, y)
@@ -229,7 +231,7 @@ function platform_animation.on_tick()
       if queue.target_set[key] and is_missing(surface, x, y, names) then
         local tile = queue.tile_by_key[key]
         local anim = surface.create_entity{
-          name = "warptorio-platform-build-anim",
+          name = shared.platform_build_anim,
           position = {x = tile_x(tile) + 0.5 + anim_offset_x, y = tile_y(tile) + 0.5 + anim_offset_y}
         }
         table.insert(queue.pending, {entity = anim, tile = tile, key = key})
