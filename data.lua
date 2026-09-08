@@ -244,6 +244,254 @@ if foundation then
 end
 data:extend{tile_platform,tile_world}
 
+local function add_cluster_offsets(source, count, distance, angle_offset, t)
+  for i = 0, count - 1 do
+    local a = 2 * math.pi * (i + angle_offset) / count
+    local tt = table.deepcopy(t)
+    local x0 = distance * math.sin(a) * 0.75
+    local x1 = distance * math.sin(a)
+    local y0 = distance * math.cos(a) * 0.75
+    local y1 = distance * math.cos(a)
+    tt.offset_deviation = {{math.min(x0, x1), math.min(y0, y1)},
+                           {math.max(x0, x1), math.max(y0, y1)}}
+    source[#source + 1] = tt
+  end
+  return source
+end
+
+local function make_empty_animation(frame_count)
+  return {
+    filename = "__core__/graphics/empty.png",
+    priority = "high",
+    width = 1,
+    height = 1,
+    frame_count = 1,
+    repeat_count = frame_count,
+  }
+end
+
+local blue_light = {r=0.6, g=0.7, b=1.0}
+
+local function make_ring_particle(name, filename, width, height, shift)
+  return {
+    type = "optimized-particle",
+    name = name,
+    life_time = 100,
+    vertical_acceleration = 0,
+    fade_away_duration = 60,
+    render_layer = "object",
+    pictures = {
+      filename = filename,
+      priority = "high",
+      flags = {"smoke"},
+      line_length = 8,
+      width = width,
+      height = height,
+      frame_count = 32,
+      animation_speed = 0.5,
+      variation_count = 1,
+      shift = shift,
+      scale = 1.5 / 8,
+      tint = {0.5, 0.5, 0.5, 1.0},
+      blend_mode = "additive-soft",
+    },
+    shadows = {
+      filename = filename,
+      priority = "high",
+      flags = {"smoke"},
+      line_length = 8,
+      width = width,
+      height = height,
+      frame_count = 32,
+      animation_speed = 0.5,
+      variation_count = 1,
+      shift = shift,
+      scale = 1.5 / 8,
+      tint = {0, 0, 0, 0.5},
+    },
+  }
+end
+
+local function make_ring_particles()
+  return {
+    make_ring_particle(
+      shared.teleport_ring_1,
+      "__warptorio-space-age-edge__/graphics/effects/teleport-ring-1.png",
+      132, 136, util.by_pixel(-0.5, 0)),
+    make_ring_particle(
+      shared.teleport_ring_2,
+      "__warptorio-space-age-edge__/graphics/effects/teleport-ring-2.png",
+      110, 128, util.by_pixel(0, 3)),
+  }
+end
+
+local function make_teleport_ring_effect()
+  return {
+    type = "direct",
+    action_delivery = {
+      type = "instant",
+      source_effects = add_cluster_offsets(
+        add_cluster_offsets(
+          {},
+          8, 0.125, 0,
+          {
+            type = "create-particle",
+            particle_name = shared.teleport_ring_1,
+            repeat_count = 1,
+            initial_height = 0.125,
+            frame_speed = 1,
+            frame_speed_variation = 0.25,
+            tail_length = 12,
+            tail_width = 8,
+            speed_from_center = 0.015,
+            speed_from_center_deviation = 0,
+          }
+        ),
+        8, 0.125, 0.5,
+        {
+          type = "create-particle",
+          particle_name = shared.teleport_ring_2,
+          repeat_count = 1,
+          initial_height = 0.125,
+          frame_speed = 1,
+          frame_speed_variation = 0.25,
+          tail_length = 12,
+          tail_width = 8,
+          speed_from_center = 0.015,
+          speed_from_center_deviation = 0,
+        }
+      ),
+    },
+  }
+end
+
+local rings = make_ring_particles()
+
+data:extend({
+  rings[1],
+  rings[2],
+  {
+    type = "optimized-particle",
+    name = shared.teleport_spark_particle,
+    life_time = 20,
+    fade_away_duration = 8,
+    render_layer = "wires-above",
+    render_layer_when_on_ground = "corpse",
+    pictures = {
+      sheet = {
+        filename = "__base__/graphics/particle/pole-sparks/pole-sparks.png",
+        draw_as_glow = true,
+        line_length = 12,
+        width = 6,
+        height = 6,
+        frame_count = 12,
+        variation_count = 3,
+        animation_speed = 2,
+        scale = 0.5,
+        shift = util.by_pixel(0, 0)
+      }
+    },
+    movement_modifier_when_on_ground = 0,
+  },
+  {
+    type = "explosion",
+    name = shared.teleport_explosion,
+    localised_name = {"entity-name.medium-explosion"},
+    icon = "__base__/graphics/item-group/effects.png",
+    icon_size = 64,
+    flags = {"placeable-off-grid", "not-on-map"},
+    hidden = true,
+    subgroup = "explosions",
+    render_layer = "higher-object-above",
+    animations = {{
+      filename = "__warptorio-space-age-edge__/graphics/effects/teleport-explosion-1.png",
+      priority = "high",
+      width = 124,
+      height = 224,
+      frame_count = 30,
+      line_length = 6,
+      shift = util.by_pixel(-1, -20),
+      draw_as_glow = true,
+      animation_speed = 1,
+      scale = 0.5,
+    }, {
+      filename = "__warptorio-space-age-edge__/graphics/effects/teleport-explosion-2.png",
+      priority = "high",
+      width = 154,
+      height = 212,
+      frame_count = 41,
+      line_length = 6,
+      shift = util.by_pixel(-13, -18),
+      draw_as_glow = true,
+      animation_speed = 1,
+      scale = 0.5,
+    }, {
+      filename = "__warptorio-space-age-edge__/graphics/effects/teleport-explosion-3.png",
+      priority = "high",
+      width = 126,
+      height = 236,
+      frame_count = 39,
+      line_length = 6,
+      shift = util.by_pixel(0.5, -19),
+      draw_as_glow = true,
+      animation_speed = 1,
+      scale = 0.5,
+    }},
+    light = {intensity = 0.8, size = 10, color = blue_light},
+    sound = nil,
+    created_effect = make_teleport_ring_effect(),
+  },
+  {
+    type = "sound",
+    name = shared.teleport_boom_sound,
+    category = "explosion",
+    aggregation = {max_count = 1, remove = true},
+    audible_distance_modifier = 2,
+    variations = {
+      {filename = "__base__/sound/fight/nuclear-explosion-1.ogg", volume = 0.25},
+      {filename = "__base__/sound/fight/nuclear-explosion-2.ogg", volume = 0.25},
+      {filename = "__base__/sound/fight/nuclear-explosion-3.ogg", volume = 0.25},
+    },
+  },
+  {
+    type = "explosion",
+    name = shared.teleport_spark_effect,
+    localised_name = {"entity-name.small-explosion"},
+    icon = "__base__/graphics/item-group/effects.png",
+    icon_size = 64,
+    flags = {"placeable-off-grid", "not-on-map"},
+    hidden = true,
+    subgroup = "explosions",
+    light = {intensity = 0.25, size = 4, color = blue_light},
+    animations = make_empty_animation(),
+    sound = nil,
+    created_effect = {
+      type = "direct",
+      action_delivery = {
+        type = "instant",
+        source_effects = {
+          {
+            type = "create-particle",
+            particle_name = shared.teleport_spark_particle,
+            repeat_count = 4,
+            repeat_count_deviation = 2,
+            initial_height = 0.75,
+            initial_vertical_speed = 1.0 / 32,
+            initial_vertical_speed_deviation = 1.0 / 128,
+            tail_width = 4,
+            tail_length = 10,
+            frame_speed = 1,
+            frame_speed_deviation = 0.25,
+            speed_from_center = 0.0125,
+            speed_from_center_deviation = 0.005,
+            offset_deviation = {{-0.125, -0.125}, {0.125, 0.125}},
+          },
+        },
+      },
+    },
+  },
+})
+
 
 --[[for name,element in pairs(data.raw["tile"]) do
    if string.find(name,"concrete") then

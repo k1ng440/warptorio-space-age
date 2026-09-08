@@ -62,11 +62,16 @@ function M.play_teleport_sound(surface, position)
   end
 end
 
+function M.play_teleport_boom(surface, position, player_index)
+  if not surface or not surface.valid then return end
+  local list = teleport_sounds()
+  list[#list + 1] = {surface_name = surface.name, position = position, player_index = player_index, tick = game.tick + 8}
+end
+
 function M.teleport_effect(surface, position)
   if not surface or not surface.valid then return end
-  if prototypes.entity["railgun-beam"] then
-    surface.create_entity{name="railgun-beam", position=position, target=position}
-  end
+  surface.create_entity{name=shared.teleport_explosion, position=position}
+  surface.create_entity{name=shared.teleport_spark_effect, position=position}
   table.insert(teleport_fx(), {surface_name=surface.name, position=position, tick=game.tick})
 end
 
@@ -78,10 +83,12 @@ script.on_nth_tick(2, function()
     if s.tick <= now then
       table.remove(sq, i)
       local surface = s.surface_name and game.surfaces[s.surface_name]
-      M.play_teleport_sound(surface, s.position)
+      if surface and surface.valid then
+        surface.play_sound{path=shared.teleport_boom_sound, position=s.position}
+      end
       local p = game.get_player(s.player_index)
-      if p and p.connected and p.controller_type == defines.controllers.character then
-        p.play_sound{path=shared.sounds.teleport, position=s.position}
+      if p and p.connected then
+        p.play_sound{path=shared.teleport_boom_sound}
       end
     end
   end
@@ -91,32 +98,32 @@ script.on_nth_tick(2, function()
     local surface = fx.surface_name and game.surfaces[fx.surface_name]
     if not (surface and surface.valid) then
       table.remove(fx_list, i)
+    elseif (now - fx.tick) / 15 >= 1 then
+      table.remove(fx_list, i)
+    --[[
     else
       local p = (now - fx.tick) / 15
-      if p >= 1 then
-        table.remove(fx_list, i)
-      else
+      rendering.draw_circle{
+        surface = surface,
+        target = fx.position,
+        radius = 0.5 + p * 3,
+        width = 3,
+        filled = false,
+        color = {0.3, 0.8, 1, (1 - p) * 0.9},
+        time_to_live = 3,
+      }
+      if p < 0.4 then
+        local k = p / 0.4
         rendering.draw_circle{
           surface = surface,
           target = fx.position,
-          radius = 0.5 + p * 3,
-          width = 3,
-          filled = false,
-          color = {0.3, 0.8, 1, (1 - p) * 0.9},
+          radius = 0.5 + (1 - k) * 1.5,
+          filled = true,
+          color = {0.5, 0.9, 1, (1 - k) * 0.7},
           time_to_live = 3,
         }
-        if p < 0.4 then
-          local k = p / 0.4
-          rendering.draw_circle{
-            surface = surface,
-            target = fx.position,
-            radius = 0.5 + (1 - k) * 1.5,
-            filled = true,
-            color = {0.5, 0.9, 1, (1 - k) * 0.7},
-            time_to_live = 3,
-          }
-        end
       end
+    end]]
     end
   end
 
@@ -199,7 +206,7 @@ function M.check_teleport(player,location,destination,box)
     local from_surface = player.character and player.character.surface or player.surface
     local from_position = player.character and player.character.position or player.position
     M.teleport_body(player, player_pos, destination)
-    table.insert(teleport_sounds(), {surface_name=game.surfaces[destination] and game.surfaces[destination].name, position=player_pos, player_index=player.index, tick=game.tick+8})
+    M.play_teleport_boom(game.surfaces[destination], player_pos, player.index)
     M.teleport_effect(from_surface, from_position)
     M.teleport_effect(game.surfaces[destination], player_pos)
   else
@@ -220,9 +227,8 @@ function M.teleport_players(source,destination,factory)
   local function teleport_player_to(player, target)
     local from_surface = player.character and player.character.surface or game.surfaces[destination]
     local from_position = player.character and player.character.position or target
-    M.play_teleport_sound(from_surface, from_position)
-    M.play_teleport_sound(game.surfaces[destination], target)
     M.teleport_body(player, target, destination)
+    M.play_teleport_boom(game.surfaces[destination], target, player.index)
     M.teleport_effect(from_surface, from_position)
     M.teleport_effect(game.surfaces[destination], target)
   end
@@ -285,8 +291,7 @@ function M.teleport_players(source,destination,factory)
           end
         end
         if pos then
-          M.play_teleport_sound(from_surface, from_position)
-          M.play_teleport_sound(dest_surface, pos)
+          M.play_teleport_boom(dest_surface, pos, v.index)
           M.teleport_effect(from_surface, from_position)
           M.teleport_effect(dest_surface, pos)
         else

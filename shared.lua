@@ -44,6 +44,12 @@ shared.combinator = "warp-constant-combinator"
 -- Effects
 shared.speech_bubble = "warptorio_speech_bubble"
 shared.platform_build_anim = "warptorio-platform-build-anim"
+shared.teleport_explosion = "warptorio-teleport-explosion"
+shared.teleport_boom_sound = "warptorio-teleport-boom"
+shared.teleport_ring_1 = "warptorio-teleport-ring-1"
+shared.teleport_ring_2 = "warptorio-teleport-ring-2"
+shared.teleport_spark_particle = "warptorio-teleport-spark"
+shared.teleport_spark_effect = "warptorio-teleport-spark-fx"
 
 -- Shortcuts / custom inputs
 shared.shortcut_teleport = "warptorio-teleport"

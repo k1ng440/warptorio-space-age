@@ -2616,8 +2616,7 @@ script.on_event(defines.events.on_lua_shortcut, function(e)
             local from_surface = player.character and player.character.surface or nil
             local from_position = player.character and player.character.position or nil
             player_teleport.teleport_body(player, player_pos, "factory")
-            player_teleport.play_teleport_sound(from_surface, from_position)
-            player_teleport.play_teleport_sound(game.surfaces["factory"], player_pos)
+            player_teleport.play_teleport_boom(game.surfaces["factory"], player_pos, player.index)
             player_teleport.teleport_effect(from_surface, from_position)
             player_teleport.teleport_effect(game.surfaces["factory"], player_pos)
          end
@@ -2634,7 +2633,7 @@ script.on_event(defines.events.on_player_respawned, function(event)
   local surface = game.surfaces[storage.warptorio.warp_zone]
   local player_pos = surface and surface.find_non_colliding_position("character", spawn_center, 0, 0.5, false) or spawn_center
   player_teleport.teleport_body(game.players[event.player_index], player_pos, storage.warptorio.warp_zone)
-  player_teleport.play_teleport_sound(surface, player_pos)
+  player_teleport.play_teleport_boom(surface, player_pos, event.player_index)
   player_teleport.teleport_effect(surface, player_pos)
         --end
 end)
