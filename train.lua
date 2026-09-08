@@ -223,14 +223,15 @@ function train_code.resolve_train_destination(surface_name, station_name)
       train_decision[#train_decision + 1] = { surface = gs, station = warp_settings.train.factory_station, destination = "factory" }
    end
 
-   if game.forces["player"].technologies[warp_settings.train.garden_research].researched then
-      train_decision[#train_decision + 1] = { surface = "garden", station = warp_settings.train.ground_station, destination = ground_surfaces[1] }
-      train_decision[#train_decision + 1] = { surface = "garden", station = warp_settings.train.factory_station, destination = "factory" }
-      for _, gs in ipairs(ground_surfaces) do
-         train_decision[#train_decision + 1] = { surface = gs, station = warp_settings.train.garden_station, destination = "garden" }
-      end
-      train_decision[#train_decision + 1] = { surface = "factory", station = warp_settings.train.garden_station, destination = "garden" }
+   -- Garden rows are intentionally not gated on research here: a train parked
+   -- at WarpGarden still resolves, so warp_trains can warn instead of failing
+   -- silently when the garden tech is missing.
+   train_decision[#train_decision + 1] = { surface = "garden", station = warp_settings.train.ground_station, destination = ground_surfaces[1] }
+   train_decision[#train_decision + 1] = { surface = "garden", station = warp_settings.train.factory_station, destination = "factory" }
+   for _, gs in ipairs(ground_surfaces) do
+      train_decision[#train_decision + 1] = { surface = gs, station = warp_settings.train.garden_station, destination = "garden" }
    end
+   train_decision[#train_decision + 1] = { surface = "factory", station = warp_settings.train.garden_station, destination = "garden" }
 
    for _, d in ipairs(train_decision) do
       if d.surface == surface_name and d.station == station_name then
@@ -449,6 +450,8 @@ end
 -- destination is the surface name the train should warp to. The caller decides it based on
 -- which warp station the train stopped at (ground floor, garden floor, or factory).
 function train_code.warp_trains(train, station_name, destination)
+   if not train or not train.valid or not train.id then return end
+
    if not game.forces["player"].technologies[shared.techs.train].researched then
       -- Hard gate: tell the player once per parking. The train warps itself as
       -- soon as the tech is researched (scan_for_parked_warps keeps polling it).
@@ -460,7 +463,18 @@ function train_code.warp_trains(train, station_name, destination)
       end
       return
    end
-   if not train or not train.valid or not train.id then return end
+
+   local source_surface = train.station and train.station.surface and train.station.surface.name
+   if (source_surface == "garden" or destination == "garden")
+      and not game.forces["player"].technologies[warp_settings.train.garden_research].researched then
+      local queue = pending_warps()
+      local pending = queue[train.id]
+      if not pending then
+         queue[train.id] = { station_name = station_name, queued_at = game.tick, warned = true }
+         speak_on_train(train, {"warptorio.train-warp-needs-garden-research"}, 5)
+      end
+      return
+   end
 
    local stations = game.train_manager.get_train_stops({station_name=station_name})
    for _, v in ipairs(stations) do
