@@ -1832,12 +1832,15 @@ local function next_warp_zone_finish()
 
     local players = game.players
     for i,v in pairs(players) do
-      local inventory = v.get_inventory(defines.inventory.character_main)
-      if inventory then
-        local container = inventory.find_item_stack("warp_2x2-container")
-        while container do
-          container.clear()
-          container = inventory.find_item_stack("warp_2x2-container")
+      for _, inv_id in pairs({defines.inventory.character_main, defines.inventory.character_trash}) do
+        local inventory = v.get_inventory(inv_id)
+        if inventory then
+          for j = 1, #inventory do
+            local stack = inventory[j]
+            if stack.valid_for_read and stack.name == "warp_2x2-container" then
+              stack.clear()
+            end
+          end
         end
       end
     end
