@@ -142,6 +142,12 @@ local function update_entity(entity, parameters, cache_row)
   return true
 end
 
+local function slot_cache_cleanup(unit_number)
+  if storage.warptorio and storage.warptorio.combinator_slot_cache then
+    storage.warptorio.combinator_slot_cache[unit_number] = nil
+  end
+end
+
 function warp_constant_combinator.register(entity)
   if not entity or not entity.valid or entity.name ~= warp_settings.combinator.name then
     return
@@ -150,15 +156,25 @@ function warp_constant_combinator.register(entity)
   local entities = ensure_storage()
   if entity.unit_number then
     entities[entity.unit_number] = entity
+    slot_cache_cleanup(entity.unit_number)
+    -- Invalidate the global gate so a combinator placed while the state key is
+    -- stable is still synced on the very next tick. The per-slot diff keeps every
+    -- other entity silent, so this costs one lookup pass, not a rewrite.
+    storage.warptorio.combinator_cache = nil
   end
 end
 
 function warp_constant_combinator.unregister(entity)
-  if not entity or not entity.unit_number or not storage.warptorio or not storage.warptorio.constant_combinators then
+  if not entity or not entity.unit_number then
     return
   end
-
-  storage.warptorio.constant_combinators[entity.unit_number] = nil
+  if storage.warptorio and storage.warptorio.constant_combinators then
+    storage.warptorio.constant_combinators[entity.unit_number] = nil
+    -- Same as register: force the next refresh through so stale slot state can't be
+    -- reused if the unit number is ever recycled. Cheap.
+    storage.warptorio.combinator_cache = nil
+  end
+  slot_cache_cleanup(entity.unit_number)
 end
 
 function warp_constant_combinator.init()
