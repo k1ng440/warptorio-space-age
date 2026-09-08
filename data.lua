@@ -271,6 +271,7 @@ end
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
 acc.name = "warp-power"
+acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
 }
@@ -286,6 +287,7 @@ data:extend{acc}
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
 acc.name = "warp-power-2"
+acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
 }
@@ -301,6 +303,7 @@ data:extend{acc}
 
 local acc = table.deepcopy(data.raw["accumulator"]["accumulator"])
 acc.name = "warp-power-3"
+acc.collision_box = {{-0.5, -0.5}, {0.5, 0.5}}
 acc.minable_properties = {
   minable = false
 }

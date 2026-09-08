@@ -1080,6 +1080,39 @@ local function create_asteroids(amount, surface)
    end
 end
 
+local transition_asteroid_names = {}
+do
+  local seen = {}
+  for _, tier in ipairs(warp_settings.space.asteroids) do
+    for _, name in ipairs(tier) do
+      if not seen[name] then
+        seen[name] = true
+        transition_asteroid_names[#transition_asteroid_names + 1] = name
+      end
+    end
+  end
+end
+
+-- warp-space-transition is created once and never recreated, so every ride leaves
+-- its trailing asteroids behind for every future warp: they drift past the pad and
+-- keep simulating until the next visit. Sweep the leftovers when the ride is over
+-- (the pad is being abandoned at that point anyway).
+local function clear_transition_asteroids()
+  if #transition_asteroid_names == 0 then
+    return
+  end
+  local surface = game.surfaces["warp-space-transition"]
+  if not surface or not surface.valid then
+    return
+  end
+  local found = surface.find_entities_filtered{name = transition_asteroid_names}
+  for _, asteroid in ipairs(found) do
+    if asteroid.valid then
+      asteroid.destroy()
+    end
+  end
+end
+
 local function create_angry_biters(biter_type,number,surface,quality,target)
    local target = target or {x=0,y=0}
    if surface == "space" then
@@ -1834,6 +1867,7 @@ local function next_warp_zone_finish()
       game.play_sound({path="warp-start"})
     end
    storage.warptorio.teleporting = false
+   clear_transition_asteroids()
    platform_code.on_warp(source,name)
    warp_constant_combinator.rescan()
 end
@@ -2186,6 +2220,15 @@ if storage.warptorio.game_over then return end
   if storage.warptorio.transition_timer > 0 then
      storage.warptorio.transition_timer = storage.warptorio.transition_timer - 1
      next_warp_zone_transition()
+     -- Drain the destination's pending chunk generation a couple ticks before
+     -- landing so the finish tick's force_generate_chunk_requests has nothing left.
+     -- next_warp_zone_transition early-returns below 60, so this can't live there.
+     if storage.warptorio.transition_timer == 2 then
+        local dest_surface = game.surfaces[storage.warptorio.warp_next]
+        if dest_surface and dest_surface.valid then
+           dest_surface.force_generate_chunk_requests()
+        end
+     end
      --return
   elseif storage.warptorio.transition_timer == 0 then
      next_warp_zone_finish()
@@ -2685,7 +2728,8 @@ script.on_event(defines.events.script_raised_revive, function(e)
   build_entity(e)
 end)
 
-local function is_warp_capacitor(entity)
+local function is_protected_warp_entity(entity)
+    if entity.name == "warp_2x2-container" then return true end
     if not storage.warptorio or not storage.warptorio.power then return false end
     if not storage.warptorio.power_unit_number then
         storage.warptorio.power_unit_number = {}
@@ -2709,7 +2753,7 @@ end
 script.on_event(defines.events.on_entity_damaged, function(e)
     if e.force ~= game.forces.player then return end
     if e.entity.force ~= game.forces.player then return end
-    if not is_warp_capacitor(e.entity) then return end
+    if not is_protected_warp_entity(e.entity) then return end
     local ok, max_health = pcall(function() return e.entity.prototype.max_health end)
     if ok and max_health then
         e.entity.health = max_health
