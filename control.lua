@@ -364,6 +364,38 @@ local function starter_chest()
   end
 end
 
+local function researched_level(prefix)
+   local level = 0
+   for i = 1, 50 do
+      local tech = game.forces["player"].technologies[prefix .. i]
+      if tech and tech.researched then
+         level = i
+      else
+         break
+      end
+   end
+   return level
+end
+
+local function restore_save_state()
+   if not storage.warptorio then return end
+   local force = game.forces and game.forces["player"]
+   if not force then return end
+   local ground = storage.warptorio.ground_level or 0
+   local level = researched_level("warp-ground-platform-")
+   if level > ground then
+      storage.warptorio.ground_level = level
+      storage.warptorio.ground_size = warp_settings.floor.levels[level] * 2
+      log("[warptorio] restore_save_state: raised ground level " .. ground .. " -> " .. level)
+   end
+   local factory = storage.warptorio.factory_level or 0
+   level = researched_level("warp-factory-platform-")
+   if level > factory then
+      storage.warptorio.factory_level = level
+      log("[warptorio] restore_save_state: raised factory level " .. factory .. " -> " .. level)
+   end
+end
+
 local function on_init_or_load()
 
    storage.warporio = storage.warporio or {}
@@ -386,6 +418,7 @@ local function on_init_or_load()
     ensure_surface_positions()
    ensure_surface_offset(storage.warptorio.warp_zone)
    starter_chest()
+   restore_save_state()
    warp_constant_combinator.init()
 end
 
@@ -418,6 +451,7 @@ local minimap_needs_reposition = false
 
 script.on_load(function()
   --on_init_or_load()
+  restore_save_state()
   minimap_needs_reposition = true
 end)
 
@@ -767,8 +801,8 @@ local function belt_pair(pos1,pos2,speed)
     belt2.rotatable = false
 end
 
-local function update_belt_biochamber()
-    if storage.warptorio.belt_level == 0 then return end
+local function update_belt_biochamber(e)
+    if storage.warptorio.belt_level == 0 and e == nil then return end
     local speed = {15,30,45,60}
     --game.print("Upgrading belts connection")
     local level = storage.warptorio.belt_level
@@ -786,10 +820,10 @@ local function update_belt_biochamber()
     end
 
     for i,v in ipairs(names) do
-      delete_items({{-5,-1},{-4,1}},name,"factory")
-      delete_items({{-5,-1},{-4,1}},name,"garden")
-      --delete_items({{4,-1},{5,1}},name,"factory")
-      --delete_items({{4,-1},{5,1}},name,"garden")
+      delete_items({{-5,-1},{-4,1}},v,"factory")
+      delete_items({{-5,-1},{-4,1}},v,"garden")
+      --delete_items({{4,-1},{5,1}},v,"factory")
+      --delete_items({{4,-1},{5,1}},v,"garden")
     end
 
     belt_pair({y=0,x=-5,dir=defines.direction.east,surface="garden"},{y=0,x=-5,dir=defines.direction.east,surface="factory"},speed[level])
@@ -1281,16 +1315,16 @@ local function update_belt(e)
     end
 
     for i,v in ipairs(names) do
-      delete_items({{-1,-5},{1,-4}},name,"factory")
-      delete_items({{-1,-5},{1,-4}},name,storage.warptorio.warp_zone)
-      delete_items({{-1,4},{1,5}},name,"factory")
-      delete_items({{-1,4},{1,5}},name,storage.warptorio.warp_zone)
+      delete_items({{-1,-5},{1,-4}},v,"factory")
+      delete_items({{-1,-5},{1,-4}},v,storage.warptorio.warp_zone)
+      delete_items({{-1,4},{1,5}},v,"factory")
+      delete_items({{-1,4},{1,5}},v,storage.warptorio.warp_zone)
     end
 
     belt_pair({x=0,y=-5,dir=defines.direction.south,surface=storage.warptorio.warp_zone},{x=0,y=-5,dir=defines.direction.south,surface="factory"},speed[level])
     belt_pair({x=-1,y=-5,dir=defines.direction.south,surface=storage.warptorio.warp_zone},{x=-1,y=-5,dir=defines.direction.south,surface="factory"},speed[level])
     belt_pair({x=0,y=4,dir=defines.direction.north,surface="factory"},{x=0,y=4,dir=defines.direction.north,surface=storage.warptorio.warp_zone},speed[level])
-    belt_pair({x=-1,y=4,dir=defines.direction.north,surface="factory"},{x=-1,y=4,defines.direction.north,surface=storage.warptorio.warp_zone},speed[level])
+    belt_pair({x=-1,y=4,dir=defines.direction.north,surface="factory"},{x=-1,y=4,dir=defines.direction.north,surface=storage.warptorio.warp_zone},speed[level])
 
 
     storage.warptorio.belt_level = level
@@ -1362,7 +1396,7 @@ local function choose_quality(index)
 end
 
 local function replace_common(entity)
-   if not entity.force.name == "enemy" then return end
+   if entity.force.name ~= "enemy" then return end
    local evolution = get_evolution_factor()
    -- Same gate as choose_quality: below it every enemy is normal quality anyway,
    -- so there is nothing to replace.
@@ -1835,13 +1869,12 @@ local function next_warp_zone_finish()
        storage.warptorio.wave_index = storage.warptorio.previous_surface_wave or 0
        storage.warptorio.wave_time = storage.warptorio.previous_surface_time or warp_settings.biter.time
     end
-    -- This is no longer needed
-    --[[local extra_time = false
+    local extra_time = false
     for i,v in ipairs(warp_settings.biter.extra_time_planet) do
       if v == storage.warptorio.surface_name then
         extra_time = true
       end
-       end]]
+    end
     if extra_time then storage.warptorio.wave_time = storage.warptorio.wave_time + warp_settings.biter.extra_time_amount end
     create_void_platform(source,true)
     if storage.warptorio.old_surface and game.surfaces[storage.warptorio.old_surface] and game.surfaces[storage.warptorio.old_surface].valid then
@@ -2461,7 +2494,7 @@ local function update_time(e)
     --game.print("Time on planet extended")
 
     local e_level = mysplit(e,"-")
-    level = tonumber(e_level[#e_level])
+    local level = tonumber(e_level[#e_level])
    storage.warptorio.time_level = level
 end
 
@@ -2469,7 +2502,7 @@ local function update_power(e)
     --game.print("Time on planet extended")
 
     local e_level = mysplit(e,"-")
-    level = tonumber(e_level[#e_level])
+    local level = tonumber(e_level[#e_level])
     storage.warptorio.power_name = shared.power[level+1]
 end
 
@@ -2688,6 +2721,7 @@ script.on_event(defines.events.on_script_trigger_effect, function(event)
      if event.source_entity then
         local name = event.source_entity.name
         local pos = event.source_entity.position
+        if not pos then return end
         local tile = "empty-space"
         local explosion_size = 15
         local amount = 1
@@ -2701,9 +2735,8 @@ script.on_event(defines.events.on_script_trigger_effect, function(event)
            explosion_size = 12
         end
         local tiles = generate_ellipse(explosion_size, explosion_size, tile,pos.x,pos.y)
-        local level = storage.warptorio.ground_level
+        local level = storage.warptorio.ground_level > 0 and storage.warptorio.ground_level or 1
         local size = warp_settings.floor.levels[level]
-        if not pos then return end
         local types = {"carbonic","metallic","oxide"}
         for _,i in ipairs(types) do
            if string.match(name, i) then
