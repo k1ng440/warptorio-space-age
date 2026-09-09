@@ -14,13 +14,66 @@ data:extend({
   },
   {
     type = "tips-and-tricks-item",
-    name = "warptorio-warp-trains",
-    tag = "[entity=locomotive]",
-    order = "z[warptorio]-b[warp-trains]",
+    name = "warptorio-floors",
+    tag = "[entity=warp_2x2-container]",
+    order = "b[floors]",
     category = "warptorio",
     trigger = {
       type = "research",
-      technology = "warp-train"
+      technology = "warp-ground-platform-1"
+    },
+    is_title = false,
+    indent = 1,
+    simulation = nil,
+  },
+  {
+    type = "tips-and-tricks-item",
+    name = "warptorio-minimap",
+    tag = "[entity=radar]",
+    order = "c[minimap]",
+    category = "warptorio",
+    trigger = {
+      type = "research",
+      technology = "warp-factory-platform-1"
+    },
+    is_title = false,
+    indent = 1,
+    simulation = nil,
+  },
+  {
+    type = "tips-and-tricks-item",
+    name = "warptorio-derelict-platform",
+    tag = "[entity=warp-power]",
+    order = "d[derelict]",
+    category = "warptorio",
+    trigger = {
+      type = "research",
+      technology = "warp-ground-platform-2"
+    },
+    is_title = false,
+    indent = 1,
+    simulation = nil,
+  },
+  {
+    type = "tips-and-tricks-item",
+    name = "warptorio-void",
+    tag = "[entity=warp-asteroid-chest]",
+    order = "e[void]",
+    category = "warptorio",
+    starting_status = "unlocked",
+    is_title = false,
+    indent = 1,
+    simulation = nil,
+  },
+  {
+    type = "tips-and-tricks-item",
+    name = "warptorio-planet-hopping",
+    tag = "[planet=nauvis]",
+    order = "f[planet-hopping]",
+    category = "warptorio",
+    trigger = {
+      type = "research",
+      technology = "chemical-science-pack"
     },
     is_title = false,
     indent = 1,
@@ -30,7 +83,7 @@ data:extend({
     type = "tips-and-tricks-item",
     name = "warptorio-evolution-scaling",
     tag = "[entity=big-biter]",
-    order = "z[warptorio]-c[evolution-scaling]",
+    order = "g[evolution-scaling]",
     category = "warptorio",
     trigger = {
   	  type = "or",
@@ -52,7 +105,7 @@ data:extend({
     type = "tips-and-tricks-item",
     name = "warptorio-asteroids",
     tag = "[entity=big-carbonic-asteroid]",
-    order = "z[warptorio]-d[asteroids]",
+    order = "h[asteroids]",
     category = "warptorio",
     trigger = {
       type = "research",
@@ -66,7 +119,7 @@ data:extend({
     type = "tips-and-tricks-item",
     name = "warptorio-warp-combinator",
     tag = "[item=warp-constant-combinator]",
-    order = "z[warptorio]-f[warp-combinator]",
+    order = "i[warp-combinator]",
     category = "warptorio",
     trigger = {
       type = "research",
@@ -80,7 +133,7 @@ data:extend({
     type = "tips-and-tricks-item",
     name = "warptorio-floor-limits",
     tag = "[entity=roboport]",
-    order = "z[warptorio]-g[floor-limits]",
+    order = "j[floor-limits]",
     category = "warptorio",
     trigger = {
       type = "research",
@@ -92,17 +145,28 @@ data:extend({
   },
   {
     type = "tips-and-tricks-item",
-    name = "warptorio-planet-hopping",
-    tag = "[planet=nauvis]",
-    order = "z[warptorio]-e[planet-hopping]",
+    name = "warptorio-warp-trains",
+    tag = "[entity=locomotive]",
+    order = "k[warp-trains]",
     category = "warptorio",
     trigger = {
       type = "research",
-      technology = "chemical-science-pack"
+      technology = "warp-train"
     },
     is_title = false,
     indent = 1,
     simulation = nil,
-  }
+  },
+  {
+    type = "tips-and-tricks-item",
+    name = "warptorio-warp-vote",
+    tag = "[entity=gun-turret]",
+    order = "l[warp-vote]",
+    category = "warptorio",
+    starting_status = "unlocked",
+    is_title = false,
+    indent = 1,
+    simulation = nil,
+  },
 
 })

@@ -141,12 +141,32 @@ end
 
 M.sync = sync_ground_minimap
 
+local function is_cursor_over_minimap(player, display_location)
+  local frame = player.gui.screen[ground_minimap_frame_name]
+  if not (frame and frame.valid and frame.visible) then return false end
+  if not display_location then return false end
+  local scale = player.display_scale
+  local x, y = display_location.x, display_location.y
+  local x0, y0 = frame.location.x, frame.location.y
+  local minimap = frame[ground_minimap_name]
+  local x1, y1
+  if minimap and minimap.valid and minimap.location then
+    x1 = x0 + (minimap.location.x + ground_minimap_size) * scale
+    y1 = y0 + (minimap.location.y + ground_minimap_size) * scale
+  else
+    x1 = x0 + (ground_minimap_size + 16) * scale
+    y1 = y0 + (ground_minimap_size + 40) * scale
+  end
+  return x >= x0 and x <= x1 and y >= y0 and y <= y1
+end
+
 local function on_ground_minimap_scroll(event, direction)
-  local element = event.cursor_element
-  if not element then return end
-  if element.name ~= ground_minimap_name and element.name ~= ground_minimap_frame_name then return end
   local player = game.get_player(event.player_index)
   if not player then return end
+  local element = event.element
+  local over_element = element and element.valid and
+    (element.name == ground_minimap_name or element.name == ground_minimap_frame_name)
+  if not over_element and not is_cursor_over_minimap(player, event.cursor_display_location) then return end
   if not storage.warptorio.minimap_zoom_factor then
     storage.warptorio.minimap_zoom_factor = {}
   end

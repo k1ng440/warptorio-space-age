@@ -795,15 +795,15 @@ data:extend{set_my_data(name, map_gen_settings)}]]
 data:extend{{
    type = "custom-input",
    name = shared.input_minimap_zoom_in,
-   key_sequence = "mouse-wheel-up",
-   consuming = "none",
+   key_sequence = "SHIFT + mouse-wheel-up",
+   consuming = "game-only",
    action = "lua",
 }}
 data:extend{{
    type = "custom-input",
    name = shared.input_minimap_zoom_out,
-   key_sequence = "mouse-wheel-down",
-   consuming = "none",
+   key_sequence = "SHIFT + mouse-wheel-down",
+   consuming = "game-only",
    action = "lua",
 }}
 
