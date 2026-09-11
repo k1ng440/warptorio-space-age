@@ -1,6 +1,7 @@
 local shared = require("shared")
 local sp = require("modules.surface_position")
 local eh = require("modules.entity_helper")
+local power_tick = require("modules.power_tick")
 local tg = require("modules.tile_generation")
 local util = require("modules.util")
 local belt_system = require("modules.belt_system")
@@ -79,8 +80,8 @@ function M.refresh_power_and_teleport(dest)
     log("Warning: refresh_power_and_teleport skipped, surface \"" .. tostring(dest) .. "\" is missing")
     return
   end
-  local power_1 = eh.get_or_create(storage.warptorio.power_name, {x = 0, y = 0, surface = dest})
-  local power_2 = eh.get_or_create(storage.warptorio.power_name, {x = 0, y = 0, surface = "factory"})
+  local power_1 = power_tick.get_or_create_power(dest)
+  local power_2 = power_tick.get_or_create_power("factory")
   power_1.minable_flag = false
   power_2.minable_flag = false
   power_1.rotatable = false
@@ -102,7 +103,7 @@ function M.refresh_power_and_teleport(dest)
   storage.warptorio.power_unit_number[2] = power_2.unit_number
 
   if storage.warptorio.biochamber_level then
-    local power_3 = eh.get_or_create(storage.warptorio.power_name, {x = 0, y = 0, surface = "garden"})
+    local power_3 = power_tick.get_or_create_power("garden")
     power_3.minable_flag = false
     power_3.rotatable = false
     storage.warptorio.power[3] = power_3
@@ -365,6 +366,25 @@ function M.update_reactor_platform(e)
   game.surfaces["garden"].set_tiles(tiles)
 end
 
+function M.apply_ground_markers(dest, level)
+  M.set_ground_tiles({x = -1, y = -6, tiles = "hazard-concrete-left", surface = dest, size = 1})
+  M.set_ground_tiles({x = -1, y = 4, tiles = "hazard-concrete-left", surface = dest, size = 1})
+
+  if level == 1 then
+    local tiles = M.generate_surface_rectangle(dest, 2, 6, "hazard-concrete-left")
+    game.surfaces[dest].set_tiles(tiles)
+  end
+
+  if not storage.warptorio.container_left_enabled then
+    local tiles = M.generate_surface_rectangle(dest, 2, 2, "hazard-concrete-left", -2)
+    game.surfaces[dest].set_tiles(tiles)
+  end
+
+  if storage.warptorio.factory_level > 0 then
+    M.refresh_power_and_teleport(dest)
+  end
+end
+
 function M.update_ground_platform(e)
   local previous_level = storage.warptorio.ground_level
   local level = storage.warptorio.ground_level
@@ -399,9 +419,8 @@ function M.update_ground_platform(e)
   if mode == "repair" then
     local new_tiles = M.generate_ground_shape(dest, platform * 2, shared.tiles.ground)
     platform_animation.start_gradual_repair(dest, new_tiles, center)
+    M.apply_ground_markers(dest, level)
   else
-    local tiles = M.generate_ground_shape(dest, platform * 2, shared.tiles.ground)
-    game.surfaces[dest].set_tiles(tiles)
     local old_tiles = {}
     if previous_level and previous_level > 0 then
       local old_size = warp_settings.floor.levels[previous_level] * 2
@@ -413,25 +432,10 @@ function M.update_ground_platform(e)
       old_tiles,
       new_tiles,
       center,
-      mode
+      mode,
+      dest,
+      level
     )
-  end
-
-  M.set_ground_tiles({x = -1, y = -6, tiles = "hazard-concrete-left", surface = dest, size = 1})
-  M.set_ground_tiles({x = -1, y = 4, tiles = "hazard-concrete-left", surface = dest, size = 1})
-
-  if level == 1 then
-    local tiles = M.generate_surface_rectangle(dest, 2, 6, "hazard-concrete-left")
-    game.surfaces[dest].set_tiles(tiles)
-  end
-
-  if not storage.warptorio.container_left_enabled then
-    local tiles = M.generate_surface_rectangle(dest, 2, 2, "hazard-concrete-left", -2)
-    game.surfaces[dest].set_tiles(tiles)
-  end
-
-  if storage.warptorio.factory_level > 0 then
-    M.refresh_power_and_teleport()
   end
 end
 

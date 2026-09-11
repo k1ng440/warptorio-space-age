@@ -19,6 +19,8 @@ local speech_bubbles = require("modules.speech_bubbles")
 local minimap = require("modules.minimap")
 local teleporter_visualize = require("modules.teleporter_visualize")
 local compat_repair_turret = require("modules.compat_repair_turret")
+local research_pause = require("modules.research_pause")
+local power_tick = require("modules.power_tick")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -383,6 +385,7 @@ local function on_init_or_load()
     storage.warptorio.planet_timer = storage.warptorio.planet_timer or 0
     storage.warptorio.planet_next = storage.warptorio.planet_next or nil
     storage.warptorio.game_over = storage.warptorio.game_over or false
+    research_pause.init()
     ensure_surface_positions()
    ensure_surface_offset(storage.warptorio.warp_zone)
    starter_chest()
@@ -518,8 +521,8 @@ local function refresh_power_and_teleport(dest)
        log("Warning: refresh_power_and_teleport skipped, surface \"" .. tostring(dest) .. "\" is missing")
        return
     end
-    local power_1 = get_or_create(storage.warptorio.power_name,{x=0,y=0,surface=dest})
-    local power_2 = get_or_create(storage.warptorio.power_name,{x=0,y=0,surface="factory"})
+    local power_1 = power_tick.get_or_create_power(dest)
+    local power_2 = power_tick.get_or_create_power("factory")
     power_1.minable_flag = false
     power_2.minable_flag = false
     power_1.rotatable = false
@@ -544,7 +547,7 @@ local function refresh_power_and_teleport(dest)
     storage.warptorio.power_unit_number[2] = power_2.unit_number
 
     if storage.warptorio.biochamber_level then
-        local power_3 = get_or_create(storage.warptorio.power_name,{x=0,y=0,surface="garden"})
+        local power_3 = power_tick.get_or_create_power("garden")
         power_3.minable_flag = false
         power_3.rotatable = false
         storage.warptorio.power[3] = power_3
@@ -957,13 +960,14 @@ local function set_hidden_tiles(surface,tile)
 end
 
 local function update_ground_platform(e)
-  --game.print("Upgrading ground platform size")
+  if storage.warptorio.teleporting then
+    storage.warptorio.pending_ground_platform_update = e or true
+    return
+  end
+
   local previous_level = storage.warptorio.ground_level
   local level = storage.warptorio.ground_level
   local dest = storage.warptorio.warp_zone
-  if storage.warptorio.teleporting then
-     dest = "warp-space-transition"
-  end
   
   if e then
     level = mysplit(e,"-")
@@ -1001,9 +1005,20 @@ local function update_ground_platform(e)
   if mode == "repair" then
     local new_tiles = generate_ground_shape(dest, platform*2, shared.tiles.ground)
     platform_animation.start_gradual_repair(dest, new_tiles, center)
+    set_ground_tiles({x=-1,y=-6,tiles="hazard-concrete-left",surface=dest,size=1})
+    set_ground_tiles({x=-1,y=4,tiles="hazard-concrete-left",surface=dest,size=1})
+    if level == 1 then
+        local tiles = generate_surface_rectangle(dest, 2,6,"hazard-concrete-left")
+        game.surfaces[dest].set_tiles(tiles)
+    end
+    if not storage.warptorio.container_left_enabled then
+        local tiles = generate_surface_rectangle(dest, 2,2,"hazard-concrete-left",-2)
+        game.surfaces[dest].set_tiles(tiles)
+    end
+    if storage.warptorio.factory_level > 0 then
+      refresh_power_and_teleport()
+    end
   else
-    local tiles = generate_ground_shape(dest, platform*2,shared.tiles.ground)
-    game.surfaces[dest].set_tiles(tiles)
     local old_tiles = {}
     if previous_level and previous_level > 0 then
       local old_size = warp_settings.floor.levels[previous_level] * 2
@@ -1015,26 +1030,10 @@ local function update_ground_platform(e)
       old_tiles,
       new_tiles,
       center,
-      mode
+      mode,
+      dest,
+      level
     )
-  end
-
-  -- warp belt ground	
-  set_ground_tiles({x=-1,y=-6,tiles="hazard-concrete-left",surface=dest,size=1}) -- to factory
-  set_ground_tiles({x=-1,y=4,tiles="hazard-concrete-left",surface=dest,size=1}) -- to factory
-
-  if level == 1 then
-      local tiles = generate_surface_rectangle(dest, 2,6,"hazard-concrete-left")
-      game.surfaces[dest].set_tiles(tiles)
-  end
-
-  if not storage.warptorio.container_left_enabled then
-      local tiles = generate_surface_rectangle(dest, 2,2,"hazard-concrete-left",-2)
-      game.surfaces[dest].set_tiles(tiles)
-  end
-
-  if storage.warptorio.factory_level > 0 then
-    refresh_power_and_teleport()
   end
 end
 
@@ -2216,7 +2215,7 @@ local function update_nauvis_timer()
 end
 
 local function trigger_game_over()
-    if storage.warptorio.game_over then return end
+if storage.warptorio.game_over then return end
     storage.warptorio.game_over = true
     game.print({"warptorio.capacitor-destroyed"})
     game.set_lose_ending_info{title={"warptorio.lose-screen-title"}, message={"warptorio.lose-screen-text"}}
@@ -2258,14 +2257,22 @@ if storage.warptorio.game_over then return end
     if v == storage.warptorio.surface_name and technology_check() then
       game.forces["player"].research_progress = 0
     end
-    if storage.warptorio.teleporting and technology_check() then
-       game.forces["player"].research_progress = 0
+  end
+  if storage.warptorio.teleporting then
+    if storage.warptorio.paused_research == nil and research_pause.ground_research_active() then
+      research_pause.pause()
     end
+    if technology_check() then
+      game.forces["player"].research_progress = 0
+    end
+  elseif storage.warptorio.paused_research ~= nil then
+    research_pause.resume()
   end
   if not storage.warptorio.transition_timer then storage.warptorio.transition_timer = -1 end
   gui_state.update_all_labels()
   update_nauvis_timer()
   platform_code.on_tick()
+  power_tick.flush_pending_reconnect()
   on_tick_power()
   platform_animation.on_tick()
   storage.warptorio.platform_animation_active = platform_animation.is_active()
@@ -2476,11 +2483,12 @@ local function update_time(e)
 end
 
 local function update_power(e)
-    --game.print("Time on planet extended")
-
     local e_level = mysplit(e,"-")
     local level = tonumber(e_level[#e_level])
-    storage.warptorio.power_name = shared.power[level+1]
+    local new_name = shared.power[level+1]
+    if not new_name then return end
+    storage.warptorio.power_name = new_name
+    power_tick.upgrade_power_capacitors(new_name)
 end
 
 local function build_entity(e)
@@ -2603,6 +2611,15 @@ local techs = {
     },   
 }
 
+script.on_event(defines.events["warptorio-warp-finished"], function()
+  if storage.warptorio.pending_ground_platform_update == nil then
+    return
+  end
+  local pending = storage.warptorio.pending_ground_platform_update
+  storage.warptorio.pending_ground_platform_update = nil
+  update_ground_platform(pending == true and nil or pending)
+end)
+
 script.on_event(defines.events.on_research_finished, function(e)
      platform_code.on_research(e)
      for _,v in ipairs(techs) do
@@ -2678,8 +2695,10 @@ end)
 floor_garden.setup()
 
 script.on_event(defines.events.on_research_started, function(e)
-    if string.match(e.research.name, "warp") then
-      if string.match(e.research.name, "end") then
+    local name = e.research.name
+    research_pause.on_research_started(e.research)
+    if string.match(name, "warp") then
+      if string.match(name, "end") then
         for i,v in ipairs(warp_settings.blocked_planets) do
           if v == storage.warptorio.surface_name then
              game.print({"warptorio.research-wrong-planet"},{color={1,0,0}})

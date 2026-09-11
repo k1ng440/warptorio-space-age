@@ -6,57 +6,6 @@ local function position_key(x, y)
   return x .. "," .. y
 end
 
-local function build_position_set(tiles)
-  local set = {}
-  for _, tile in ipairs(tiles) do
-    if tile_position_ok(tile) then
-      set[position_key(tile_x(tile), tile_y(tile))] = true
-    end
-  end
-  return set
-end
-
-local function sample_tiles(tiles, max_count)
-  local count = #tiles
-  if count <= max_count then
-    return tiles
-  end
-  local step = math.floor(count / max_count)
-  local sampled = {}
-  for i = 1, count, step do
-    table.insert(sampled, tiles[i])
-    if #sampled >= max_count then
-      break
-    end
-  end
-  return sampled
-end
-
-local function shuffle_tiles(tiles)
-  local shuffled = {}
-  for i = 1, #tiles do
-    shuffled[i] = tiles[i]
-  end
-  for i = #shuffled, 2, -1 do
-    local j = math.random(i)
-    shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-  end
-  return shuffled
-end
-
-local function sample_random(tiles, max_count)
-  local count = #tiles
-  if count <= max_count then
-    return tiles
-  end
-  local shuffled = shuffle_tiles(tiles)
-  local sampled = {}
-  for i = 1, max_count do
-    sampled[i] = shuffled[i]
-  end
-  return sampled
-end
-
 local warp_settings = require("internal_settings")
 local repair_speed_config = warp_settings.repair.batch_configs[warp_settings.repair.speed] or warp_settings.repair.batch_configs.normal
 local repair_batch_size = repair_speed_config.batch
@@ -124,6 +73,9 @@ function platform_animation.is_active()
   if storage.warptorio.platform_rebuild_queue then
     return true
   end
+  if storage.warptorio.platform_expand_queue then
+    return true
+  end
   if storage.warptorio.platform_animation_active_until and
      game.tick < storage.warptorio.platform_animation_active_until then
     return true
@@ -172,6 +124,10 @@ function platform_animation.start_gradual_repair(surface_name, tiles, center)
     return
   end
 
+  if storage.warptorio.platform_expand_queue then
+    storage.warptorio.platform_expand_queue = nil
+  end
+
   storage.warptorio.platform_rebuild_queue = {
     surface_name = surface_name,
     center = center,
@@ -184,7 +140,76 @@ function platform_animation.start_gradual_repair(surface_name, tiles, center)
   game.print("Repair queued: " .. #edge_list .. " edge tiles on " .. surface_name)
 end
 
+local function process_expand_queue()
+  local warptorio = storage.warptorio
+  if not warptorio then
+    return
+  end
+  local eq = warptorio.platform_expand_queue
+  if not eq then
+    return
+  end
+  local surface = game.surfaces[eq.surface_name]
+  if not surface or not surface.valid then
+    warptorio.platform_expand_queue = nil
+    return
+  end
+
+  eq.pending = eq.pending or {}
+
+  -- tiles whose build animation finished become visible now
+  local tiles_to_place = {}
+  for i = #eq.pending, 1, -1 do
+    local pending = eq.pending[i]
+    if not pending.entity.valid then
+      tiles_to_place[#tiles_to_place + 1] = pending.pos
+      table.remove(eq.pending, i)
+    end
+  end
+  if #tiles_to_place > 0 then
+    for _, pos in ipairs(tiles_to_place) do
+      surface.set_tiles{{name = eq.tile_name, position = pos}}
+    end
+  end
+
+  -- start new build animations on this tick
+  local spawned = 0
+  while eq.next <= #eq.tiles and spawned < eq.per_tick do
+    local t = eq.tiles[eq.next]
+    eq.next = eq.next + 1
+    local anim = surface.create_entity{
+      name = shared.platform_build_anim,
+      position = {x = t.x + 0.5 + anim_offset_x, y = t.y + 0.5 + anim_offset_y}
+    }
+    if anim then
+      eq.pending[#eq.pending + 1] = {entity = anim, pos = {x = t.x, y = t.y}}
+    else
+      surface.set_tiles{{name = eq.tile_name, position = {x = t.x, y = t.y}}}
+    end
+    spawned = spawned + 1
+  end
+
+  if eq.next > #eq.tiles and #eq.pending == 0 then
+    -- flush any tiles skipped by the animation cap so no void remains
+    if eq.rest and #eq.rest > 0 then
+      for _, t in ipairs(eq.rest) do
+        surface.set_tiles{{name = eq.tile_name, position = {x = t.x, y = t.y}}}
+      end
+      eq.rest = nil
+    end
+    local dest = eq.marker_dest
+    local level = eq.marker_level
+    warptorio.platform_expand_queue = nil
+    storage.warptorio.platform_animation_active_until = game.tick + 15
+    if dest and level then
+      local pb = require("platform_builder")
+      pb.apply_ground_markers(dest, level)
+    end
+  end
+end
+
 function platform_animation.on_tick()
+  process_expand_queue()
   local queue = storage.warptorio and storage.warptorio.platform_rebuild_queue
   if not queue then
     return
@@ -259,7 +284,13 @@ function platform_animation.on_tick()
   end
 end
 
-function platform_animation.animate_ground_platform(surface, old_tiles, new_tiles, center, mode)
+local MAX_EXPAND_ANIMS = 2200
+
+local function ring_sort_compare(a, b)
+  return a.d < b.d
+end
+
+function platform_animation.animate_ground_platform(surface, old_tiles, new_tiles, center, mode, marker_dest, marker_level)
   if not surface or not surface.valid then
     return
   end
@@ -269,29 +300,66 @@ function platform_animation.animate_ground_platform(surface, old_tiles, new_tile
   if type(new_tiles) ~= "table" then
     return
   end
+  if mode ~= "expand" then
+    return
+  end
+
+  if storage.warptorio.platform_expand_queue then
+    storage.warptorio.platform_expand_queue = nil
+  end
+
+  local names = platform_tile_names()
+  local cx, cy = center.x, center.y
+  local band = {}
+  for _, tile in ipairs(new_tiles) do
+    if tile_position_ok(tile) then
+      local x = tile_x(tile)
+      local y = tile_y(tile)
+      if is_missing(surface, x, y, names) then
+        band[#band + 1] = {
+          x = x,
+          y = y,
+          d = math.max(math.abs(x - cx), math.abs(y - cy)),
+        }
+      end
+    end
+  end
+
+  table.sort(band, ring_sort_compare)
+
+  local rest = {}
+  if #band > MAX_EXPAND_ANIMS then
+    local step = math.ceil(#band / MAX_EXPAND_ANIMS)
+    local sampled = {}
+    for i = 1, #band do
+      if i % step == 1 then
+        sampled[#sampled + 1] = band[i]
+      else
+        rest[#rest + 1] = band[i]
+      end
+    end
+    band = sampled
+  end
+
+  if #band == 0 then
+    return
+  end
 
   storage.warptorio.platform_animation_active_until = game.tick + expand_lock_ticks
 
-  local effect = (mode == "repair") and "explosion" or "space-platform-foundation-explosion"
-  local max_effects = 120
-  local tiles_to_animate = new_tiles
+  surface.create_entity{name = shared.teleport_explosion, position = center}
 
-  if mode == "expand" then
-    tiles_to_animate = sample_random(new_tiles, max_effects)
-  end
-
-  surface.create_entity{name = "big-explosion", position = center}
-
-  for _, tile in ipairs(sample_tiles(tiles_to_animate, max_effects)) do
-    if tile_position_ok(tile) then
-      surface.create_entity{
-        name = effect,
-        position = {x = tile_x(tile) + 0.5, y = tile_y(tile) + 0.5}
-      }
-    else
-      log("platform_animation: skipped tile without position in " .. (mode or "?"))
-    end
-  end
+  storage.warptorio.platform_expand_queue = {
+    surface_name = surface.name,
+    tile_name = warp_settings.tiles.ground,
+    marker_dest = marker_dest,
+    marker_level = marker_level,
+    tiles = band,
+    rest = rest,
+    next = 1,
+    per_tick = math.max(1, math.ceil(#band / expand_lock_ticks)),
+    pending = {},
+  }
 end
 
 return platform_animation

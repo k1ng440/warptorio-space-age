@@ -368,6 +368,7 @@ local local_settings = {
      time = "warp%-time",
      win = "warp%-end%-win",
      reactor = "warp%-reactor%-platform",
+     repair = "warptorio%-platform%-repair",
   },
   gui = {
      holder = "WarptorioGUI",
