@@ -2,7 +2,7 @@
 Version: 0.4.14
 Date: 2026-09-12
   Changes:
-- Fix: wire disconnect issue after warp capacitor upgrade research — wires are re-created a tick
+- Fix: wire disconnect issue after warp capacitor upgrade research. Wires are re-created a tick
       later as normal player wires, so they render exactly like hand-placed wires instead of being
       hidden
     - Fix: ground platform size upgrades requested while the platform is warping are deferred and
@@ -37,7 +37,7 @@ Date: 2026-09-09
       warptorio-game-over, warptorio-game-win (subscribe via script.on_event on
       defines.events["warptorio-..."], see README "Events API" section)
     - Added remote.call("warptorio", "get_events") to list all raised event names
-    - Fix: Repair Turret mod crash when clearing planet surfaces — destroy repair-turrets
+    - Fix: Repair Turret mod crash when clearing planet surfaces. Destroy repair-turrets
       with raise_destroy before clear/delete so the mod cleans its surface-index registry
 ---------------------------------------------------------------------------------------------------
 Version: 0.4.5
