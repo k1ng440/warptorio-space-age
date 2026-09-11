@@ -206,7 +206,7 @@ local function shape_positions(shape, size)
   if shape == "circle" then
     tiles = generate_ellipse(size, size, nil, 0, 0)
   elseif shape == "hexagon" then
-    tiles = generate_hexagon(size / 2, nil, 0, 0)
+    tiles = generate_hexagon(size * 0.62, nil, 0, 0)
   else
     tiles = generate_rectangle(size, size, nil, 0, 0)
   end
@@ -364,38 +364,6 @@ local function starter_chest()
   end
 end
 
-local function researched_level(prefix)
-   local level = 0
-   for i = 1, 50 do
-      local tech = game.forces["player"].technologies[prefix .. i]
-      if tech and tech.researched then
-         level = i
-      else
-         break
-      end
-   end
-   return level
-end
-
-local function restore_save_state()
-   if not storage.warptorio then return end
-   local force = game.forces and game.forces["player"]
-   if not force then return end
-   local ground = storage.warptorio.ground_level or 0
-   local level = researched_level("warp-ground-platform-")
-   if level > ground then
-      storage.warptorio.ground_level = level
-      storage.warptorio.ground_size = warp_settings.floor.levels[level] * 2
-      log("[warptorio] restore_save_state: raised ground level " .. ground .. " -> " .. level)
-   end
-   local factory = storage.warptorio.factory_level or 0
-   level = researched_level("warp-factory-platform-")
-   if level > factory then
-      storage.warptorio.factory_level = level
-      log("[warptorio] restore_save_state: raised factory level " .. factory .. " -> " .. level)
-   end
-end
-
 local function on_init_or_load()
 
    storage.warporio = storage.warporio or {}
@@ -418,7 +386,6 @@ local function on_init_or_load()
     ensure_surface_positions()
    ensure_surface_offset(storage.warptorio.warp_zone)
    starter_chest()
-   restore_save_state()
    warp_constant_combinator.init()
 end
 
@@ -442,7 +409,7 @@ script.on_init(function()
 
   on_init_or_load()
   local spawn_offset = get_surface_offset(storage.warptorio.warp_zone)
-  game.forces.player.set_spawn_position({x=spawn_offset.x,y=spawn_offset.y}, game.surfaces[storage.warptorio.warp_zone])
+  game.forces.player.set_spawn_position({x=spawn_offset.x,y=spawn_offset.y+2}, game.surfaces[storage.warptorio.warp_zone])
   local tiles = generate_surface_rectangle("nauvis", warp_settings.floor.levels[1]*2,warp_settings.floor.levels[1]*2,"hazard-concrete-left")
   game.surfaces["nauvis"].set_tiles(tiles)
 end)
@@ -451,7 +418,6 @@ local minimap_needs_reposition = false
 
 script.on_load(function()
   --on_init_or_load()
-  restore_save_state()
   minimap_needs_reposition = true
 end)
 
@@ -650,7 +616,7 @@ local function update_factory_platform(e)
   if warp_settings.factory.shape == "ellipse" then
      tiles = generate_ellipse(platform.width,platform.height,shared.tiles.factory)
   elseif warp_settings.factory.shape == "hexagon" then
-     tiles = generate_hexagon(platform.width/2,shared.tiles.factory)
+     tiles = generate_hexagon(platform.width*0.62,shared.tiles.factory)
   else
      tiles = generate_cross(platform.width,platform.height,platform.arm)
   end
@@ -790,8 +756,16 @@ local function belt_pair(pos1,pos2,speed)
       return
     end
 
-    belt.disconnect_linked_belts()
-    belt2.disconnect_linked_belts()
+    -- Destroy both ends so the chain starts clean: a leftover linked belt may
+    -- keep a stale chain that connect_linked_belts silently refuses to rebind,
+    -- which made the warp links stop working randomly.
+    belt.destroy()
+    belt2.destroy()
+    belt = get_or_create(shared.belt.prefix..speed,pos1)
+    belt2 = get_or_create(shared.belt.prefix..speed,pos2)
+    if belt == nil or belt2 == nil then
+      return
+    end
     belt2.linked_belt_type = "output"
     belt.linked_belt_type = "input"
     belt.connect_linked_belts(belt2)
@@ -1862,6 +1836,8 @@ local function next_warp_zone_finish()
     end
     -- New floor is live; release trains frozen for the clone.
     train_code.resume_ground_bound_trains()
+    -- Cloned trains don't re-evaluate pump↔wagon links; nudge fluid trains to re-dock.
+    train_code.realign_docked_fluid_trains()
     
     storage.warptorio.wave_index = 0
     storage.warptorio.wave_time = warp_settings.biter.time
@@ -1911,7 +1887,7 @@ local function next_warp_zone_finish()
 
     storage.warptorio.warp_zone = surface.name
     local spawn = get_surface_offset(surface.name)
-    game.forces.player.set_spawn_position({x=spawn.x,y=spawn.y}, surface)
+    game.forces.player.set_spawn_position({x=spawn.x,y=spawn.y+2}, surface)
 
     if game.forces.player.technologies["warp-biochamber-platform-1"].researched then
        update_belt_biochamber()
@@ -1991,6 +1967,7 @@ local function next_warp_zone_space()
    storage.warptorio.warp_zone = dest
    refresh_power_and_teleport(dest)
    train_code.resume_ground_bound_trains()
+   train_code.realign_docked_fluid_trains()
    update_belt()
    storage.warptorio.warp_zone = save
 
@@ -2662,7 +2639,7 @@ end)
 
 script.on_event(defines.events.on_player_respawned, function(event)
         --if game.players[event.player_index].character.surface ~= storage.warptorio.warp_zone then
-  local spawn_center = translate_surface_position(storage.warptorio.warp_zone, {x=0, y=0})
+  local spawn_center = translate_surface_position(storage.warptorio.warp_zone, {x=0, y=2.0})
   local surface = game.surfaces[storage.warptorio.warp_zone]
   local player_pos = surface and surface.find_non_colliding_position("character", spawn_center, 0, 0.5, false) or spawn_center
   player_teleport.teleport_body(game.players[event.player_index], player_pos, storage.warptorio.warp_zone)
@@ -2931,6 +2908,7 @@ minimap.init({
 
 teleporter_visualize.init({
   get_warp_zone = function() return storage.warptorio.warp_zone end,
+  translate_surface_position = translate_surface_position,
   teleporters = warp_settings.teleporters,
 })
 

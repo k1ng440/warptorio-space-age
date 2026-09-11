@@ -350,28 +350,36 @@ function module.add(name, design)
 end
 
 function module.delete()
-   game.print("Deleting platform")
     if not storage.warptorio then return end
     if not storage.warptorio.current_platforms then
        return
     end
     local current = storage.warptorio.current_platforms
+    local deleted = false
     if current.entities then
         for _,e in ipairs(current.entities) do
             if e and e.valid then
                 e.destroy()
             end
         end
+        deleted = true
     end
     current.entities = nil
     if current.platform then
         for _,v in ipairs(current.platform) do
            v.name = "empty-space"
         end
-        game.surfaces[current.surface].set_tiles(
-           current.platform)
+        if current.surface and game.surfaces[current.surface] and game.surfaces[current.surface].valid then
+           game.surfaces[current.surface].set_tiles(current.platform)
+        end
         current.platform = nil
+        deleted = true
     end
+    if deleted and current.surface == storage.warptorio.warp_zone then
+       game.print({"warptorio.derelict-cleared"})
+    end
+    current.timer = 0
+    current.duration = 0
 end
 
 return module

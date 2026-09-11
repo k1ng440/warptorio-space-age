@@ -517,7 +517,7 @@ local_settings.teleporters = {
     position = {x = -1, y = 1},
     box = {minx = -0.4, maxx = 2.4, miny = 0.3, maxy = 2.3},
     destination = "$warp_zone",
-    color = {0.9, 0.2, 0.2},
+    color = {0.2, 0.9, 0.3},
   },
   factory_to_garden = {
     surface = "factory",

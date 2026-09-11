@@ -24,6 +24,10 @@ local function warp_effects()
    return storage.warptorio.warp_effects
 end
 
+-- Short-lived (under two seconds) re-dock choreography after a ground warp:
+-- a docked fluid train we nudged backward, keyed by train.id.
+local pump_realigns = {}
+
 -- Pre-freeze speeds of trains frozen for the warp, keyed by train.id.
 local function frozen_train_speeds()
    storage.warptorio = storage.warptorio or {}
@@ -95,8 +99,40 @@ function train_code.create_warp_trail(surface, position, direction, length, fron
    }
 end
 
+-- Per-tick driver for pump_realigns: waits until a nudged train has rolled
+-- clear, then drops it back to automatic and re-trips its journey so the engine
+-- re-registers a real arrival at the stop.
+local function align_pump_trains()
+   for tid, plan in pairs(pump_realigns) do
+      local train = game.get_train_by_id(tid)
+      if not (train and train.valid) then
+         pump_realigns[tid] = nil
+      elseif #train.passengers > 0 then
+         -- A player jumped on mid-roll; back off and leave them in manual.
+         pump_realigns[tid] = nil
+      else
+         local dx = train.front_stock.position.x - plan.x
+         local dy = train.front_stock.position.y - plan.y
+         local moved = math.sqrt(dx * dx + dy * dy)
+         if train.speed == 0 then
+            if moved >= 0.6 or game.tick - plan.kick_tick >= 15 then
+               train.manual_mode = false
+               pump_realigns[tid] = nil
+               if train.schedule and train.schedule.current >= 1 then
+                  train.go_to_station(train.schedule.current)
+               end
+            end
+         elseif game.tick - plan.kick_tick > 90 then
+            -- Rolled for ages without stopping: brake and re-dock anyway.
+            train.speed = 0
+         end
+      end
+   end
+end
+
 -- Advances and draws all active warp effects. Called every tick from control.lua.
 function train_code.on_tick(tick)
+   align_pump_trains()
    local effects = warp_effects()
    if not next(effects) then return end
 
@@ -694,6 +730,48 @@ function train_code.resume_ground_bound_trains()
    end
    for k in pairs(speeds) do speeds[k] = nil end
    return true
+end
+
+-- After a ground warp the cloned trains sit on the new floor watertight and
+-- geometrically perfect, but the engine never re-evaluates pump↔wagon links for
+-- them (connections are only formed when a wagon is freshly built, replaced or
+-- actually arrives at the stop). For each docked fluid train with a real pump in
+-- reach: a short manual reverse (the vanilla "tap backwards" nudge) to clear the
+-- slot, and align_pump_trains puts it back automatic so it re-drives in and the
+-- pumps wire up on arrival. Cargo-only trains and occupied trains are untouched.
+function train_code.realign_docked_fluid_trains()
+   local floors = {}
+   for _, stop in ipairs(game.train_manager.get_train_stops({ station_name = warp_settings.train.ground_station })) do
+      floors[stop.surface.name] = true
+   end
+   for surface_name in pairs(floors) do
+      local surface = game.surfaces[surface_name]
+      if surface and surface.valid then
+         for _, wagon in ipairs(surface.find_entities_filtered{ type = "fluid-wagon" }) do
+            local train = wagon.train
+            if train and train.valid
+               and train.state == defines.train_state.wait_station
+               and train.speed == 0
+               and #train.passengers == 0
+               and train.schedule and train.schedule.current >= 1
+               and not pump_realigns[train.id] then
+               local area = {
+                  left_top = { x = wagon.position.x - 3, y = wagon.position.y - 3 },
+                  right_bottom = { x = wagon.position.x + 3, y = wagon.position.y + 3 },
+               }
+               if #surface.find_entities_filtered{ area = area, type = "pump" } > 0 then
+                  pump_realigns[train.id] = {
+                     kick_tick = game.tick,
+                     x = train.front_stock.position.x,
+                     y = train.front_stock.position.y,
+                  }
+                  train.manual_mode = true
+                  train.speed = -0.3
+               end
+            end
+         end
+      end
+   end
 end
 
 -- Snapshot each train's mode/speed/state/schedule before the clone.

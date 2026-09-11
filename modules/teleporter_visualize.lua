@@ -3,18 +3,43 @@ local M = {}
 local env
 
 local active = false
-local render_ids = {}
+
+local function state()
+  storage.warptorio = storage.warptorio or {}
+  storage.warptorio.teleporter_visualize = storage.warptorio.teleporter_visualize or {}
+  return storage.warptorio.teleporter_visualize
+end
+
+local function ensure_render_ids()
+  local st = state()
+  if type(st.render_ids) ~= "table" then
+    st.render_ids = {}
+  end
+  return st.render_ids
+end
+
+local function destroy_object(id)
+  if type(id) == "number" then
+    local ok, obj = pcall(rendering.get_object_by_id, id)
+    if ok and obj then
+      pcall(obj.destroy, obj)
+    end
+  end
+end
 
 local function clear_all()
+  local render_ids = ensure_render_ids()
   for _, id in pairs(render_ids) do
-    local obj = rendering.get_object_by_id(id)
-    if obj then obj:destroy() end
+    destroy_object(id)
   end
-  render_ids = {}
+  for id in pairs(render_ids) do
+    render_ids[id] = nil
+  end
 end
 
 local function draw_zone(surface, pos, box, color, label)
   if not surface or not surface.valid then return end
+  local render_ids = ensure_render_ids()
   local sx = pos.x + (box.minx or -0.4)
   local sy = pos.y + (box.miny or -0.4)
   local ex = pos.x + (box.maxx or 2.4)
@@ -60,8 +85,12 @@ local function refresh()
       log("[teleporter_visualize]   pad=" .. tostring(name) .. " surface=" .. tostring(surface_name) ..
           " exists=" .. tostring(surface ~= nil) .. " valid=" .. tostring(surface and surface.valid))
       if surface and surface.valid then
-        draw_zone(surface, pad.position, pad.box, pad.color,
-          "PAD: " .. name .. "  (walk here)")
+        local pos = pad.position
+        if env.translate_surface_position then
+          pos = env.translate_surface_position(surface_name, pad.position)
+        end
+        draw_zone(surface, pos, pad.box, pad.color,
+          "PAD: " .. name)
       end
     end
   end
@@ -69,10 +98,21 @@ end
 
 function module_init(env_table)
   env = env_table
+  local st = state()
+  if not st.cleared then
+    st.cleared = true
+    pcall(rendering.clear)
+  end
+  active = not not st.active
+  clear_all()
+  if active then
+    refresh()
+  end
 end
 
 function M.toggle(player)
   active = not active
+  state().active = active
   if active then
     log("[teleporter_visualize] toggle ON by " .. (player and player.name or "?") .. " on surface=" ..
         tostring(player and player.character and player.character.surface and player.character.surface.name))
