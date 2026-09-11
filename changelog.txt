@@ -2,9 +2,9 @@
 Version: 0.4.14
 Date: 2026-09-12
   Changes:
-    - Fix: circuit wires on warp power capacitors are now re-created correctly after a power
-      research upgrade. Reconnection is deferred to the next tick and the wires are created as
-      normal player wires, so they render exactly like hand-placed wires instead of being hidden
+- Fix: wire disconnect issue after warp capacitor upgrade research — wires are re-created a tick
+      later as normal player wires, so they render exactly like hand-placed wires instead of being
+      hidden
     - Fix: ground platform size upgrades requested while the platform is warping are deferred and
       applied when the warp finishes instead of being dropped
     - Research on ground/repair platform during a warp transition is now genuinely paused (new
