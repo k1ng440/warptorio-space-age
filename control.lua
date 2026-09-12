@@ -1310,13 +1310,50 @@ local function check_wave()
        end
       local max = math.ceil(storage.warptorio.wave_index/10)
       local max = max < warp_settings.biter.max_bosses and max or warp_settings.biter.max_bosses
+      -- Modded boss variants (maf-boss-*) belong to their home planet. Bosses
+      -- from another planet are excluded unless listed in boss_rare_planets,
+      -- in which case they spawn with the given reduced weight.
+      local surface_name = storage.warptorio.surface_name
+      local boss_pool = {}
+      local boss_weight_total = 0
+      for _, boss_name in ipairs(warp_settings.biter.entity_type["boss"][biter_index]) do
+         local prefix, home = nil, nil
+         for p, planet in pairs(warp_settings.biter.boss_planet) do
+            if boss_name:sub(1, #p) == p then prefix, home = p, planet end
+         end
+         local weight = 1
+         if prefix then
+            if home == surface_name then
+               weight = 1
+            else
+               local rare = warp_settings.biter.boss_rare_planets and warp_settings.biter.boss_rare_planets[prefix]
+               if rare then
+                  weight = rare[surface_name] or rare.default
+               else
+                  weight = nil
+               end
+            end
+         end
+         if weight and weight > 0 then
+            boss_weight_total = boss_weight_total + weight
+            table.insert(boss_pool, {name = boss_name, weight = weight})
+         end
+      end
+      local function pick_boss()
+         if #boss_pool == 0 then return nil end
+         local r = math.random() * boss_weight_total
+         for _, entry in ipairs(boss_pool) do
+            r = r - entry.weight
+            if r <= 0 then return entry.name end
+         end
+         return boss_pool[#boss_pool].name
+      end
       for _=1,max do
-          local biter_group = warp_settings.biter.entity_type["boss"][biter_index]
-          local biter_type = biter_group[math.random(1,#biter_group)]
+          local biter_type = pick_boss()
           if string.match(biter_type, "demolisher") then
             boss_system.create_angry_boss(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
           else
-            boss_system.create_angry_biters(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
+            boss_system.create_angry_biters(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality,nil,true)
           end
           if not technology_check() then break end
       end
@@ -1977,16 +2014,14 @@ local function roll_planet()
   storage.warptorio.planet_next = surface_name
   if game.forces["player"].technologies[warp_settings.trigger_research].researched then
      local sound = defines.print_sound.always
-     if warp_settings.next_planet_text then
-        local planet = storage.warptorio.planet_next
-        local icon = ""
-        if game.planets[planet] then
-           icon = "[space-location=" .. planet .. "] "
-        elseif planet == "void" then
-           icon = "[virtual-signal=warptorio-void-destination] "
-        end
-        game.print({"", icon, {"warptorio.next-planet", planet}}, {volume_modifier=0})
-     end
+       if warp_settings.next_planet_text then
+         local planet = storage.warptorio.planet_next
+         if planet == "void" then
+           game.print({"warptorio.next-planet-void"}, {volume_modifier=0})
+         else
+           game.print({"warptorio.next-planet", planet}, {volume_modifier=0})
+         end
+       end
      if warp_settings.next_planet_sound then
         game.play_sound({path="planet-change",volume_modifier=0.5})
      end

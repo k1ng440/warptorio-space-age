@@ -80,7 +80,7 @@ function M.spawn_boss_check()
    return false
 end
 
-function M.create_angry_biters(biter_type,number,surface,quality,target)
+function M.create_angry_biters(biter_type,number,surface,quality,target,is_boss)
    local target = target or {x=0,y=0}
    if surface == "space" then
       deps.create_asteroids(number,surface)
@@ -125,6 +125,9 @@ function M.create_angry_biters(biter_type,number,surface,quality,target)
          name = biter_type,
          position = pos,
          quality = quality}
+      if is_boss and angry_bitter and angry_bitter.valid then
+         ensure_boss_registry()[angry_bitter.unit_number] = {quality = quality}
+      end
       --angry_bitter.autopilot_destination = k.position
       unit_group.add_member(angry_bitter)
    end

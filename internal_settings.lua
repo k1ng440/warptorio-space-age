@@ -274,7 +274,26 @@ local local_settings = {
         {"medium-strafer-pentapod","medium-stomper-pentapod"},
         {"big-strafer-pentapod","big-stomper-pentapod"},
         {"big-strafer-pentapod","big-stomper-pentapod", "small-demolisher"},
-      }
+      },
+      -- Boss name prefix -> planet that boss belongs to. Modded boss variants
+      -- only spawn on their home planet; when the matching biter mod is not
+      -- installed the variants never enter the boss pools at all, so planets
+      -- without them fall back to the vanilla bosses above.
+      boss_planet = {
+        ["maf-boss-explosive"] = "vulcanus",
+        ["maf-boss-frost"] = "aquilo",
+        ["maf-boss-toxic"] = "gleba",
+      },
+      -- Modded boss prefixes may additionally appear on other planets at a
+      -- reduced spawn weight (relative chance vs the other bosses of the same
+      -- tier). Keys override the weight per planet, "default" covers the rest.
+      boss_rare_planets = {
+        ["maf-boss-explosive"] = {
+          vulcanus = 1,
+          nauvis = 1,
+          default = 0.2,
+        },
+      },
     },
     tresholds = {0,0.15,0.5,0.9},
     extra_time_planet = {},
