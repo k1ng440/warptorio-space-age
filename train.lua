@@ -104,7 +104,7 @@ end
 -- re-registers a real arrival at the stop.
 local function align_pump_trains()
    for tid, plan in pairs(pump_realigns) do
-      local train = game.get_train_by_id(tid)
+      local train = game.train_manager.get_train_by_id(tid)
       if not (train and train.valid) then
          pump_realigns[tid] = nil
       elseif #train.passengers > 0 then
