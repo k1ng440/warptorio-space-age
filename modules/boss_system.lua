@@ -16,7 +16,7 @@ local module_pool_cache = nil
 local function get_module_pool(tier_max)
   if not module_pool_cache then
     module_pool_cache = {normal = {}, uncommon = {}, rare = {}}
-    for name, proto in pairs(game.item_prototypes) do
+    for name, proto in pairs(prototypes.item) do
       if proto.type == "module" then
         local tier = tonumber(name:match("-(%d+)$")) or 1
         local bucket = tier <= 1 and "normal" or (tier == 2 and "uncommon" or "rare")
@@ -30,10 +30,10 @@ end
 local function get_science_pool()
   local packs = {}
   local force = game.forces.player
-  for name, proto in pairs(game.item_prototypes) do
-    if proto.type == "tool" and proto.subgroup == "science-pack" and name ~= "promethium-science-pack" then
+  for name, proto in pairs(prototypes.item) do
+    if proto.type == "tool" and proto.subgroup.name == "science-pack" and name ~= "promethium-science-pack" then
       local recipe = force.recipes[name]
-      if recipe and recipe.unlocked then table.insert(packs, name) end
+      if recipe and recipe.enabled then table.insert(packs, name) end
     end
   end
   return packs
@@ -61,7 +61,13 @@ local function drop_boss_loot(entity, quality)
       if #pool > 0 then name = pool[math.random(#pool)] end
     end
     if name then
-      surface.spill_item_stack(pos, {name = name, count = 1, quality = quality}, false, "player", false)
+      surface.spill_item_stack{
+        position = pos,
+        stack = {name = name, count = 1, quality = quality},
+        enable_looted = false,
+        force = "player",
+        allow_belts = false,
+      }
     end
   end
 end

@@ -1729,8 +1729,6 @@ local function next_warp_zone_finish()
     end
     -- New floor is live; release trains frozen for the clone.
     train_code.resume_ground_bound_trains()
-    -- Cloned trains don't re-evaluate pump↔wagon links; nudge fluid trains to re-dock.
-    train_code.realign_docked_fluid_trains()
     
     storage.warptorio.wave_index = 0
     storage.warptorio.wave_time = warp_settings.biter.time
@@ -1860,7 +1858,6 @@ local function next_warp_zone_space()
    storage.warptorio.warp_zone = dest
    refresh_power_and_teleport(dest)
    train_code.resume_ground_bound_trains()
-   train_code.realign_docked_fluid_trains()
    update_belt()
    storage.warptorio.warp_zone = save
 

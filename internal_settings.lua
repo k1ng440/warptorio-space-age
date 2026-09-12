@@ -293,6 +293,12 @@ local local_settings = {
           nauvis = 1,
           default = 0.2,
         },
+        ["maf-boss-frost"] = {
+          default = 0.2,
+        },
+        ["maf-boss-toxic"] = {
+          default = 0.2,
+        },
       },
     },
     tresholds = {0,0.15,0.5,0.9},
@@ -482,6 +488,9 @@ for name, version in pairs(script.active_mods) do
       {"flying-electric-unit-3","walking-electric-unit-3"},
       {"flying-electric-unit-4","walking-electric-unit-4"},
     }
+    -- The electric units (all tiers 1-4) are regular enemies only; no boss
+    -- tier is registered for them, so fulgora falls back to the vanilla
+    -- boss pools above.
     local_settings.dmg_research = false
   end
   if name == "Toxic_biters" then

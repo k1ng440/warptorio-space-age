@@ -7,3 +7,11 @@ for name,element in pairs(data.raw["tile"]) do
       element.walking_speed_modifier = 0.4
    end
 end
+
+-- remove speed boost from refined concrete tiles
+
+for _,tile in pairs{"red-refined-concrete", "green-refined-concrete", "blue-refined-concrete"} do
+   if data.raw["tile"][tile] then
+      data.raw["tile"][tile].walking_speed_modifier = 1
+   end
+end
