@@ -822,3 +822,16 @@ for _, name in ipairs({
   custom_events[#custom_events + 1] = { type = "custom-event", name = name }
 end
 data:extend(custom_events)
+
+-- Hidden signal that carries the warp-distance (void) destination icon, used as
+-- rich text in chat so the next-destination message shows an icon like real planets.
+data:extend{{
+   type = "virtual-signal",
+   name = "warptorio-void-destination",
+   icon = "__warptorio-space-age-edge__/graphics/destinations/deep-space.png",
+   icon_size = 256,
+   localised_name = {"virtual-signal-name.warptorio-void-destination"},
+   subgroup = "virtual-signal",
+   order = "zz[warptorio-void]",
+   hidden = true,
+}}

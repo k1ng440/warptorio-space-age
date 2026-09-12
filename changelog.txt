@@ -1,4 +1,19 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.4.15
+Date: 2026-09-12
+  Changes:
+    - Bosses now drop random loot when killed: modules and unlocked science packs (promethium
+      excluded), gated by warp progress and matching the boss quality. Two new runtime settings:
+      warptorio_boss-loot (toggle), warptorio_boss-loot-count (max items per boss, 0-5) and
+      warptorio_boss-loot-chance (drop probability, default 25%)
+    - Boss spawning, tracking and loot moved into the new boss_system module (continued modular
+      refactor); dead wave_system/warp_system modules removed
+    - Boss registration now survives quality replacement, so upgraded bosses still drop loot
+    - Next-destination chat message now shows a planet icon, or the Warp Void signal when the
+      destination is void (new hidden virtual-signal warptorio-void-destination)
+    - Fix: virtual-signal warptorio-void-destination referenced a non-existent item-subgroup,
+      which prevented the mod from loading
+---------------------------------------------------------------------------------------------------
 Version: 0.4.14
 Date: 2026-09-12
   Changes:

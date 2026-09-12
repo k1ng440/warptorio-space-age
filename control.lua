@@ -21,6 +21,7 @@ local teleporter_visualize = require("modules.teleporter_visualize")
 local compat_repair_turret = require("modules.compat_repair_turret")
 local research_pause = require("modules.research_pause")
 local power_tick = require("modules.power_tick")
+local boss_system = require("modules.boss_system")
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)
@@ -1108,6 +1109,11 @@ end
 -- its trailing asteroids behind for every future warp: they drift past the pad and
 -- keep simulating until the next visit. Sweep the leftovers when the ride is over
 -- (the pad is being abandoned at that point anyway).
+boss_system.init({
+  get_surface_offset = get_surface_offset,
+  create_asteroids = create_asteroids,
+})
+
 local function clear_transition_asteroids()
   if #transition_asteroid_names == 0 then
     return
@@ -1122,151 +1128,6 @@ local function clear_transition_asteroids()
       asteroid.destroy()
     end
   end
-end
-
-local function create_angry_biters(biter_type,number,surface,quality,target)
-   local target = target or {x=0,y=0}
-   if surface == "space" then
-      create_asteroids(number,surface)
-      return
-   end
-   local quality = quality or "normal"
-   if storage.warptorio.void then return end
-   local surface_player_list = {}
-   
-   -- Create attack force for platform
-   local angle = math.random(0,2*math.pi)
-   local level = storage.warptorio.ground_level > 0 and storage.warptorio.ground_level or 1
-   local dist = warp_settings.floor.levels[level]
-   local range = 300
-   local offset = get_surface_offset(surface)
-   local center = {x = offset.x + (target.x or 0), y = offset.y + (target.y or 0)}
-   local x = center.x + math.cos(angle)*(dist+range)
-   local y = center.y + math.sin(angle)*(dist+range)
-   
-   local unit_group = game.surfaces[surface].create_unit_group({ position = {x=x,y=y}, force = "enemy" })
-
-   local dx = center.x - x
-   local dy = center.y - y
-   local four_directions = {
-      north = defines.direction.north,
-      east  = defines.direction.east,
-      south = defines.direction.south,
-      west  = defines.direction.west,
-   }
-   local facing
-   if math.abs(dx) > math.abs(dy) then
-      facing = dx > 0 and four_directions.east or four_directions.west
-   else
-      facing = dy > 0 and four_directions.south or four_directions.north
-   end
-
-   for j = 1,number do
-
-      local pos = game.surfaces[surface].find_non_colliding_position(biter_type, {x,y}, 0, 2, false) or {x,y}
-
-      local angry_bitter = game.surfaces[surface].create_entity{
-         name = biter_type,
-         position = pos,
-         quality = quality}
-      --angry_bitter.autopilot_destination = k.position
-      unit_group.add_member(angry_bitter)
-   end
-   
-   unit_group.set_command({
-         type=defines.command.attack_area,
-         destination={
-            x=center.x,
-            y=center.y
-         },
-         radius=dist
-   })
-   unit_group.start_moving()
-end
-
-
-local function create_angry_boss(biter_type,number,surface,quality,target)
-  local target = target or {x=0,y=0}
-  local quality = quality or "normal"
-  if storage.warptorio.void then return end
-        local surface_player_list = {}
-  for i,v in pairs(game.players) do
-    -- Add players to the list
-    if v.is_player() and v.connected and v.character and v.character.surface.name == surface then
-      table.insert(surface_player_list,v.character)
-    end
-  end
-  -- If surface is floor add dummy target as well
-  --if surface == storage.warptorio.warp_zone then
-  --  table.insert(surface_player_list,storage.warptorio.power[1])
-  --end
-
-  -- Create attack force per player
-	--[[for i, k in ipairs(surface_player_list) do
-		for j = 1,number do
-			local angle = math.random(0,2*math.pi)
-			local dist = 150
-			local x = math.cos(angle)*dist+k.position.x
-			local y = math.sin(angle)*dist+k.position.y
-
-			pos = game.surfaces[surface].find_non_colliding_position(biter_type, {x,y}, 0, 2, false)
-
-			--local angry_bitter = game.surfaces[surface].create_entity{name = biter_type, position = pos, quality = warp_settings.biter.quality[quality_index]}--{game.surfaces[spawners_list[1].position.x+10],spawners_list[1].position.y+10}}
-      local angry_bitter = game.surfaces[surface].create_entity({position=pos,name=biter_type,quality=warp_settings.biter.quality[quality_index]})
-      --angry_bitter.autopilot_destination = k.position
-		end
-    -- Send double the amount just in case there are some units around that did not go yet
-		game.surfaces[surface].set_multi_command{command={type=defines.command.attack_area, destination=k.position,radius=warp_settings.biter.radius}, unit_count=number*2}
-	end]]
-
-  -- Create attack force for platform
-  local angle = math.random(0,2*math.pi)
-  local level = storage.warptorio.ground_level > 0 and storage.warptorio.ground_level or 1
-  local dist = warp_settings.floor.levels[level]
-  local range = 125
-  local offset = get_surface_offset(surface)
-  local center = {x = offset.x + (target.x or 0), y = offset.y + (target.y or 0)}
-   local x = center.x + math.cos(angle)*(dist+range)
-   local y = center.y + math.sin(angle)*(dist+range)
-   local dx = center.x - x
-   local dy = center.y - y
-   local four_directions = {
-      north = defines.direction.north,
-      east  = defines.direction.east,
-      south = defines.direction.south,
-      west  = defines.direction.west,
-   }
-   local facing
-   if math.abs(dx) > math.abs(dy) then
-      facing = dx > 0 and four_directions.east or four_directions.west
-   else
-      facing = dy > 0 and four_directions.south or four_directions.north
-   end
-  
-        for j = 1,number do
-          local x = center.x + math.cos(angle)*(dist+range)
-          local y = center.y + math.sin(angle)*(dist+range)
-                local pos = game.surfaces[surface].find_non_colliding_position(biter_type, {x,y}, 0, 2, false) or {x,y}
-
-                local angry_bitter = game.surfaces[surface].create_entity{
-                   name = biter_type,
-                   position = pos,
-                   direction=facing,
-                   quality=quality }
-    --angry_bitter.autopilot_destination = k.position
-        end
-
-  game.surfaces[surface].set_multi_command{
-    command={
-      type=defines.command.attack_area,
-      destination={
-        x=center.x + math.cos(angle)*dist,
-        y=center.y + math.sin(angle)*(dist+range)
-      },
-      radius=dist,
-    },
-    unit_count=range
-  }
 end
 
 local function update_belt(e)
@@ -1314,26 +1175,15 @@ end
 
 gui_state.configure({technology_check = technology_check})
 
-local function spawn_boss_check()
-   if storage.warptorio.wave_index % 10 == 0 then
-      return true
-   end
-   if storage.warptorio.wave_index > warp_settings.biter.wave_change_max then
-      return true
-   end
-   if storage.warptorio.wave_index > warp_settings.biter.wave_change_index then
-      local rand = math.random()
-      if rand > warp_settings.biter.wave_change_chance then return true end
-   end
-   return false
-end
-
 local function replace_with_high_quality(old_entity, strquality)
-	
+
 	local name = old_entity.name
 	local surface = old_entity.surface
 	local position = old_entity.position
 	local force = old_entity.force
+	local old_unit_number = old_entity.unit_number
+	local boss_data = storage.warptorio and storage.warptorio.bosses
+		and storage.warptorio.bosses[old_unit_number]
 	old_entity.destroy({raise_destroy=true})
 	local new_entity = surface.create_entity{
 		name = name,
@@ -1341,6 +1191,11 @@ local function replace_with_high_quality(old_entity, strquality)
 		force = force,
 		quality = strquality
 	}
+	-- Quality replacement destroys the old entity, which unregisters it as a
+	-- boss; carry the registration over so the replacement still drops loot.
+	if boss_data then
+		boss_system.register(new_entity, boss_data.quality)
+	end
 
 end
 
@@ -1426,7 +1281,7 @@ local function check_wave()
     end
   end
 
-  local spawn_boss = spawn_boss_check()
+  local spawn_boss = boss_system.spawn_boss_check()
   local quality = choose_quality(storage.warporio.index)  
   
   if limit <= 0 then
@@ -1446,7 +1301,7 @@ local function check_wave()
       --game.print("Sending gifts "..warp_settings.biter.quality[quality_index].." quality")
       
 
-      create_angry_biters(biter_type,angry_amount,storage.warptorio.warp_zone,quality)
+      boss_system.create_angry_biters(biter_type,angry_amount,storage.warptorio.warp_zone,quality)
     end
     if spawn_boss or technology_check() then
        if storage.warptorio.wave_index == 10 and (not technology_check()) then
@@ -1459,9 +1314,9 @@ local function check_wave()
           local biter_group = warp_settings.biter.entity_type["boss"][biter_index]
           local biter_type = biter_group[math.random(1,#biter_group)]
           if string.match(biter_type, "demolisher") then
-            create_angry_boss(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
+            boss_system.create_angry_boss(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
           else
-            create_angry_biters(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
+            boss_system.create_angry_biters(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
           end
           if not technology_check() then break end
       end
@@ -2123,7 +1978,14 @@ local function roll_planet()
   if game.forces["player"].technologies[warp_settings.trigger_research].researched then
      local sound = defines.print_sound.always
      if warp_settings.next_planet_text then
-        game.print({"warptorio.next-planet",storage.warptorio.planet_next},{volume_modifier=0})
+        local planet = storage.warptorio.planet_next
+        local icon = ""
+        if game.planets[planet] then
+           icon = "[space-location=" .. planet .. "] "
+        elseif planet == "void" then
+           icon = "[virtual-signal=warptorio-void-destination] "
+        end
+        game.print({"", icon, {"warptorio.next-planet", planet}}, {volume_modifier=0})
      end
      if warp_settings.next_planet_sound then
         game.play_sound({path="planet-change",volume_modifier=0.5})
@@ -2842,10 +2704,12 @@ script.on_event(defines.events.on_entity_died, function(e)
     if storage.warptorio and storage.warptorio.power_unit_number and e.entity.unit_number == storage.warptorio.power_unit_number[1] then
         trigger_game_over()
     end
+    boss_system.on_boss_died(e.entity)
 end)
 
 script.on_event(defines.events.script_raised_destroy, function(e)
     warp_constant_combinator.unregister(e.entity)
+    boss_system.unregister(e.entity)
 end)
 
 

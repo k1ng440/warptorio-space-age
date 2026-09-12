@@ -349,7 +349,7 @@ function M.update_nauvis_timer()
     end
     storage.warptorio.nauvis_timer_render = nil
     storage.warptorio.nauvis_timer_remaining = nil
-    -- This will be called from warp_system via the deps callback
+    -- Called via the deps callback from the control stage
     if M.on_nauvis_timer_expired then
       M.on_nauvis_timer_expired()
     end
