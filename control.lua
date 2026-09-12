@@ -1314,11 +1314,13 @@ local function check_wave()
       -- from another planet are excluded unless listed in boss_rare_planets,
       -- in which case they spawn with the given reduced weight.
       local surface_name = storage.warptorio.surface_name
+      local boss_planet_map = warp_settings.biter.boss_planet or {}
+      local boss_rare_map = warp_settings.biter.boss_rare_planets or {}
       local boss_pool = {}
       local boss_weight_total = 0
       for _, boss_name in ipairs(warp_settings.biter.entity_type["boss"][biter_index]) do
          local prefix, home = nil, nil
-         for p, planet in pairs(warp_settings.biter.boss_planet) do
+         for p, planet in pairs(boss_planet_map) do
             if boss_name:sub(1, #p) == p then prefix, home = p, planet end
          end
          local weight = 1
@@ -1326,7 +1328,7 @@ local function check_wave()
             if home == surface_name then
                weight = 1
             else
-               local rare = warp_settings.biter.boss_rare_planets and warp_settings.biter.boss_rare_planets[prefix]
+               local rare = boss_rare_map[prefix]
                if rare then
                   weight = rare[surface_name] or rare.default
                else
