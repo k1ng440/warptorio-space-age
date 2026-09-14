@@ -22,6 +22,8 @@ local compat_repair_turret = require("modules.compat_repair_turret")
 local research_pause = require("modules.research_pause")
 local power_tick = require("modules.power_tick")
 local boss_system = require("modules.boss_system")
+local platform_builder = require("modules.platform_builder")
+platform_animation.set_platform_builder(platform_builder)
 
 -- Helper function to create a tile
 local function create_tile(name, x, y)

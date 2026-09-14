@@ -567,8 +567,9 @@ local_settings.repair = {
 }
 
 local_settings.animation = {
-  expand_lock_ticks = 120,
+  expand_lock_ticks = 60 * 60 * 2,
   build_anim_offset = {x = 0, y = 0},
+  anim_max_ticks = 600,
 }
 
 local_settings.teleporters = {
