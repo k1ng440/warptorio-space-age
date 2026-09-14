@@ -2,6 +2,13 @@ local shared = require("shared")
 
 local platform_animation = {}
 
+-- platform_builder requires this module back, so a top-level require here would
+-- infinite-loop the loader. control.lua injects it after both modules load.
+local platform_builder
+function platform_animation.set_platform_builder(mod)
+  platform_builder = mod
+end
+
 local function position_key(x, y)
   return x .. "," .. y
 end
@@ -46,6 +53,39 @@ end
 
 local function tile_position_ok(tile)
   return tile and tile.position and tile_x(tile) and tile_y(tile)
+end
+
+-- A build animation whose chunk is inactive (or never generated) does not tick,
+-- so its explosion entity stays valid forever and the pending list never drains.
+-- Treat an animation as finished after this many ticks regardless of its state.
+local anim_max_ticks = warp_settings.animation.anim_max_ticks or 600
+
+local build_anim_base = shared.platform_build_anim
+local unknown_anims = {}
+
+local function build_dir(cx, cy, x, y)
+  local dx = x - cx
+  local dy = y - cy
+  if math.abs(dx) >= math.abs(dy) then
+    return dx > 0 and "east" or "west"
+  end
+  return dy > 0 and "south" or "north"
+end
+
+local function spawn_build_anim(surface, x, y, cx, cy)
+  local name = build_anim_base .. "-" .. build_dir(cx, cy, x, y)
+  if unknown_anims[name] then
+    return nil
+  end
+  local ok, anim = pcall(surface.create_entity, surface, {
+    name = name,
+    position = {x = x + 0.5 + anim_offset_x, y = y + 0.5 + anim_offset_y},
+  })
+  if not ok then
+    unknown_anims[name] = true
+    return nil
+  end
+  return anim
 end
 
 local function parse_key(key)
@@ -164,6 +204,14 @@ local function process_expand_queue()
     if not pending.entity.valid then
       tiles_to_place[#tiles_to_place + 1] = pending.pos
       table.remove(eq.pending, i)
+    elseif pending.spawned == nil or game.tick - pending.spawned > anim_max_ticks then
+      -- Stale animation (inactive/ungenerated chunk). Place the tile anyway so
+      -- the queue can finish and the warp engine comes back online.
+      if pending.entity.valid then
+        pending.entity.destroy()
+      end
+      tiles_to_place[#tiles_to_place + 1] = pending.pos
+      table.remove(eq.pending, i)
     end
   end
   if #tiles_to_place > 0 then
@@ -172,38 +220,36 @@ local function process_expand_queue()
     end
   end
 
-  -- start new build animations on this tick
-  local spawned = 0
-  while eq.next <= #eq.tiles and spawned < eq.per_tick do
-    local t = eq.tiles[eq.next]
-    eq.next = eq.next + 1
-    local anim = surface.create_entity{
-      name = shared.platform_build_anim,
-      position = {x = t.x + 0.5 + anim_offset_x, y = t.y + 0.5 + anim_offset_y}
-    }
-    if anim then
-      eq.pending[#eq.pending + 1] = {entity = anim, pos = {x = t.x, y = t.y}}
-    else
-      surface.set_tiles{{name = eq.tile_name, position = {x = t.x, y = t.y}}}
+  -- start new build animations on this tick (continuous outward wave, pacing
+  -- driven by spawn budget instead of a fixed per-tile interval)
+  if #eq.pending < (eq.max_pending or 600) then
+    eq.spawn_budget = (eq.spawn_budget or 0) + (eq.tps or 1) / 60
+    local spawned = 0
+    while spawned < 64 and eq.spawn_budget >= 1 and eq.next <= #eq.tiles do
+      local t = eq.tiles[eq.next]
+      eq.next = eq.next + 1
+      eq.spawn_budget = eq.spawn_budget - 1
+      local anim = spawn_build_anim(surface, t.x, t.y, eq.center.x, eq.center.y)
+      if anim then
+        eq.pending[#eq.pending + 1] = {entity = anim, pos = {x = t.x, y = t.y}, spawned = game.tick}
+      else
+        surface.set_tiles{{name = eq.tile_name, position = {x = t.x, y = t.y}}}
+      end
+      spawned = spawned + 1
     end
-    spawned = spawned + 1
   end
 
   if eq.next > #eq.tiles and #eq.pending == 0 then
-    -- flush any tiles skipped by the animation cap so no void remains
-    if eq.rest and #eq.rest > 0 then
-      for _, t in ipairs(eq.rest) do
-        surface.set_tiles{{name = eq.tile_name, position = {x = t.x, y = t.y}}}
-      end
-      eq.rest = nil
-    end
     local dest = eq.marker_dest
     local level = eq.marker_level
     warptorio.platform_expand_queue = nil
-    storage.warptorio.platform_animation_active_until = game.tick + 15
+    -- Keep the warp engine offline until the upgrade's minimum duration elapses,
+    -- even when this platform finished reconstructing early.
+    storage.warptorio.platform_animation_active_until = math.max(game.tick + 15, eq.lock_until or 0)
     if dest and level then
-      local pb = require("platform_builder")
-      pb.apply_ground_markers(dest, level)
+      if platform_builder then
+        platform_builder.apply_ground_markers(dest, level)
+      end
     end
   end
 end
@@ -231,7 +277,16 @@ function platform_animation.on_tick()
 
   for i = #queue.pending, 1, -1 do
     local pending = queue.pending[i]
-    if not pending.entity.valid then
+    if pending.entity == nil or not pending.entity.valid then
+      table.insert(batch, pending.tile)
+      table.insert(placed_keys, pending.key)
+      table.remove(queue.pending, i)
+    elseif pending.spawned == nil or game.tick - pending.spawned > anim_max_ticks then
+      -- Stale animation (inactive/ungenerated chunk). Place the tile anyway so
+      -- the queue can finish and the warp engine comes back online.
+      if pending.entity and pending.entity.valid then
+        pending.entity.destroy()
+      end
       table.insert(batch, pending.tile)
       table.insert(placed_keys, pending.key)
       table.remove(queue.pending, i)
@@ -255,11 +310,13 @@ function platform_animation.on_tick()
       local x, y = parse_key(key)
       if queue.target_set[key] and is_missing(surface, x, y, names) then
         local tile = queue.tile_by_key[key]
-        local anim = surface.create_entity{
-          name = shared.platform_build_anim,
-          position = {x = tile_x(tile) + 0.5 + anim_offset_x, y = tile_y(tile) + 0.5 + anim_offset_y}
-        }
-        table.insert(queue.pending, {entity = anim, tile = tile, key = key})
+        local anim = spawn_build_anim(surface, tile_x(tile), tile_y(tile), queue.center.x, queue.center.y)
+        if anim then
+          table.insert(queue.pending, {entity = anim, tile = tile, key = key, spawned = game.tick})
+        else
+          table.insert(batch, tile)
+          table.insert(placed_keys, key)
+        end
         spawned = spawned + 1
       end
     end
@@ -283,8 +340,6 @@ function platform_animation.on_tick()
     storage.warptorio.platform_rebuild_queue = nil
   end
 end
-
-local MAX_EXPAND_ANIMS = 2200
 
 local function ring_sort_compare(a, b)
   return a.d < b.d
@@ -327,37 +382,36 @@ function platform_animation.animate_ground_platform(surface, old_tiles, new_tile
 
   table.sort(band, ring_sort_compare)
 
-  local rest = {}
-  if #band > MAX_EXPAND_ANIMS then
-    local step = math.ceil(#band / MAX_EXPAND_ANIMS)
-    local sampled = {}
-    for i = 1, #band do
-      if i % step == 1 then
-        sampled[#sampled + 1] = band[i]
-      else
-        rest[#rest + 1] = band[i]
-      end
-    end
-    band = sampled
-  end
-
   if #band == 0 then
     return
   end
 
-  storage.warptorio.platform_animation_active_until = game.tick + expand_lock_ticks
+  local lock_until = game.tick + expand_lock_ticks
+  storage.warptorio.platform_animation_active_until = lock_until
 
   surface.create_entity{name = shared.teleport_explosion, position = center}
+
+  -- Continuous outward wave. Tiles/second scales with band size so a small
+  -- upgrade reads as one smooth ripple while a huge platform streams without
+  -- a stall; the entity cap only throttles how many anims are live at once.
+  local band_count = math.max(1, #band)
+  local min_ticks = 240
+  local target_ticks = math.max(min_ticks, math.min(expand_lock_ticks, math.floor(band_count * 6)))
+  local tps = band_count * 60 / target_ticks
+  local max_pending = 600
 
   storage.warptorio.platform_expand_queue = {
     surface_name = surface.name,
     tile_name = warp_settings.tiles.ground,
     marker_dest = marker_dest,
     marker_level = marker_level,
+    center = {x = cx, y = cy},
     tiles = band,
-    rest = rest,
     next = 1,
-    per_tick = math.max(1, math.ceil(#band / expand_lock_ticks)),
+    lock_until = lock_until,
+    spawn_budget = 0,
+    tps = tps,
+    max_pending = max_pending,
     pending = {},
   }
 end

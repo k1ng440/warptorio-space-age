@@ -225,20 +225,17 @@ if foundation then
   end
 
   if foundation.build_animations then
-    local layers = {}
     for _, dir in ipairs({"north", "south", "east", "west"}) do
-      if foundation.build_animations[dir] then
-        table.insert(layers, util.table.deepcopy(foundation.build_animations[dir]))
+      local anim = foundation.build_animations[dir]
+      if anim and anim.layers then
+        data:extend{{
+          type = "explosion",
+          name = shared.platform_build_anim .. "-" .. dir,
+          flags = {"not-on-map"},
+          animations = {{layers = util.table.deepcopy(anim.layers)}},
+          sound = nil,
+        }}
       end
-    end
-    if #layers > 0 then
-      data:extend{{
-        type = "explosion",
-        name = shared.platform_build_anim,
-        flags = {"not-on-map"},
-        animations = {{layers = layers}},
-        sound = nil,
-      }}
     end
   end
 end
