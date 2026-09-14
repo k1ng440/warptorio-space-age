@@ -1643,9 +1643,12 @@ local function create_space_platform()
   end
 end
 
+local clear_warp_countdown
+
 local function next_warp_zone_prepare(forced, go_home)
     --if true then return end
     storage.warptorio.teleporting = true
+    clear_warp_countdown()
     if not storage.warporio then storage.warporio = {} end
     if not storage.warporio.index then storage.warporio.index = 0 end
     
@@ -1981,6 +1984,86 @@ local function next_warp_zone()
    storage.warptorio.transition_timer = warp_settings.space.base_time
 end
 
+function clear_warp_countdown()
+   local renders = storage.warptorio.warp_countdown_renders
+   if renders then
+      for _, render in pairs(renders) do
+         if render and render.valid then render.destroy() end
+      end
+   end
+   storage.warptorio.warp_countdown_renders = {}
+   storage.warptorio.warp_countdown_end = nil
+   storage.warptorio.warp_countdown_shown = nil
+end
+
+-- Hooks the vote result: once enough players have voted, give everyone a few
+-- seconds of warning before the warp actually starts.
+local function start_warp_countdown()
+   if storage.warptorio.teleporting or storage.warptorio.warp_countdown_end then return end
+   storage.warptorio.warp_countdown_end = game.tick + warp_settings.time.warp_countdown_seconds * 60
+   storage.warptorio.warp_countdown_shown = nil
+   game.print({"warptorio.warp-countdown-started", warp_settings.time.warp_countdown_seconds})
+end
+
+local function update_warp_countdown()
+   local end_tick = storage.warptorio.warp_countdown_end
+   if not end_tick then return end
+   if storage.warptorio.teleporting then
+      clear_warp_countdown()
+      return
+   end
+   local remaining = end_tick - game.tick
+   if remaining <= 0 then
+      clear_warp_countdown()
+      next_warp_zone()
+      return
+   end
+   local seconds = math.ceil(remaining / 60)
+   if seconds == storage.warptorio.warp_countdown_shown then return end
+   storage.warptorio.warp_countdown_shown = seconds
+
+   local floors = {"factory"}
+   local ground_surface = game.surfaces[storage.warptorio.warp_zone]
+   if ground_surface and ground_surface.valid then
+      floors[#floors+1] = ground_surface.name
+   end
+   local garden_surface = game.surfaces["garden"]
+   if garden_surface and garden_surface.valid then
+      floors[#floors+1] = "garden"
+   end
+
+   local renders = storage.warptorio.warp_countdown_renders
+   if not renders then
+      renders = {}
+      storage.warptorio.warp_countdown_renders = renders
+   end
+   local active = {}
+   local text = {"warptorio.warp-countdown", seconds}
+   for _, surface_name in ipairs(floors) do
+      local render = renders[surface_name]
+      if render and render.valid then
+         render.text = text
+      else
+         render = rendering.draw_text{
+            surface = surface_name,
+            text = text,
+            target = translate_surface_position(surface_name, {x = 0, y = 0}),
+            scale = 3,
+            color = {1, 0.65, 0.2},
+            alignment = "center",
+         }
+         renders[surface_name] = render
+      end
+      active[surface_name] = true
+   end
+   for surface_name, render in pairs(renders) do
+      if not active[surface_name] and render and render.valid then
+         render.destroy()
+         renders[surface_name] = nil
+      end
+   end
+end
+
 --[[local function get_surfaces(trigger,index)
    local surfaces = {}
    if index > 1 and not game.forces.player.technologies[trigger].researched then
@@ -2107,6 +2190,7 @@ local function update_nauvis_timer()
          storage.warptorio.nauvis_timer_render.destroy()
       end
       storage.warptorio.nauvis_timer_render = nil
+      storage.warptorio.nauvis_force_warp_warned = nil
       return
    end
    if platform_animation.is_active() then
@@ -2119,6 +2203,11 @@ local function update_nauvis_timer()
 
    storage.warptorio.nauvis_timer_remaining = storage.warptorio.nauvis_timer_remaining - 1
    local remaining = storage.warptorio.nauvis_timer_remaining
+
+   if remaining <= 60 * 60 and not storage.warptorio.nauvis_force_warp_warned then
+      storage.warptorio.nauvis_force_warp_warned = true
+      game.print({"warptorio.nauvis-force-warp-warning"})
+   end
 
    local color
    if remaining <= 60 * 60 then
@@ -2153,7 +2242,10 @@ local function update_nauvis_timer()
       end
       storage.warptorio.nauvis_timer_render = nil
       storage.warptorio.nauvis_timer_remaining = nil
-      next_warp_zone()
+      storage.warptorio.nauvis_force_warp_warned = nil
+      if not storage.warptorio.warp_countdown_end then
+         next_warp_zone()
+      end
    end
 end
 
@@ -2222,6 +2314,7 @@ if storage.warptorio.game_over then return end
   on_tick_power()
   platform_animation.on_tick()
   storage.warptorio.platform_animation_active = platform_animation.is_active()
+  update_warp_countdown()
 
   if storage.warptorio.transition_timer > 0 then
      storage.warptorio.transition_timer = storage.warptorio.transition_timer - 1
@@ -2272,7 +2365,14 @@ if storage.warptorio.game_over then return end
     end
   end
   local time_limit = warp_settings.time.round + (warp_settings.time.round*storage.warptorio.time_level)
-  if storage.warptorio.time_passed > time_limit then
+  if storage.warptorio.time_limit_warned and storage.warptorio.time_passed < time_limit - 60 then
+    storage.warptorio.time_limit_warned = nil
+  end
+  if not storage.warptorio.time_limit_warned and storage.warptorio.time_passed >= time_limit - 60 then
+    storage.warptorio.time_limit_warned = true
+    game.print({"warptorio.time-limit-warning"})
+  end
+  if not storage.warptorio.warp_countdown_end and storage.warptorio.time_passed > time_limit then
     next_warp_zone()
   end
   if game.surfaces[storage.warptorio.warp_zone] and
@@ -2415,7 +2515,7 @@ if storage.warptorio.warp_out > 0 then
            return
         end
 
-       next_warp_zone()
+       start_warp_countdown()
 
     end
 end)
