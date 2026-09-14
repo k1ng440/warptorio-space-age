@@ -304,9 +304,9 @@ local local_settings = {
       -- Per-boss spawn weight multiplier (prefix match, like boss_planet);
       -- multiply the effective weight so a variant family can be made rarer
       -- than its siblings. Spitter bosses are weighed down here so they only
-      -- show up as a change of pace instead of dominating the pool.
+      -- show up as a rare change of pace instead of dominating the pool.
       boss_weights = {
-        ["maf-boss-explosive-spitter"] = 0.2,
+        ["maf-boss-explosive-spitter"] = 0.05,
       },
     },
     tresholds = {0,0.15,0.5,0.9},
