@@ -151,8 +151,14 @@ end
 function M.spawn_boss_check()
   -- Called before the wave counter is incremented, so the wave being spawned
   -- is counter+1 (this also keeps wave 1 from matching "% 10 == 0").
+  -- Only one boss alert per warp; the flag is cleared on the next jump.
+  if storage.warptorio.boss_spawned_warp then return false end
   local wave = (storage.warptorio.wave_index or 0) + 1
-  return math.random() < boss_chance_for_wave(wave)
+  local do_spawn = math.random() < boss_chance_for_wave(wave)
+  if do_spawn then
+    storage.warptorio.boss_spawned_warp = true
+  end
+  return do_spawn
 end
 
 -- Number of bosses still alive, used to cap concurrent bosses from the calm

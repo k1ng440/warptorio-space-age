@@ -1784,6 +1784,8 @@ local function next_warp_zone_finish()
     
     storage.warptorio.wave_index = 0
     storage.warptorio.wave_time = warp_settings.biter.time
+    -- Fresh warp: allow the next boss alert.
+    storage.warptorio.boss_spawned_warp = nil
     if keep_time then
        storage.warptorio.wave_index = storage.warptorio.previous_surface_wave or 0
        storage.warptorio.wave_time = storage.warptorio.previous_surface_time or warp_settings.biter.time
