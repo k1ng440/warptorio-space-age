@@ -210,6 +210,12 @@ function M.chart(surface_name)
   local platform_tiles = (warp_settings.floor.levels[level] or 6) * 2
   local visible = platform_tiles * warp_settings.minimap.platform_fill
   local radius = math.ceil(visible / 2) + 4
+  -- Bosses spawn at floor level distance + up to ~300 tiles out, i.e. far
+  -- outside the platform view; chart down to that ring or the (enlarged) boss
+  -- dots and their skull tags stay invisible off-chart. Margin covers
+  -- find_non_colliding_position jitter and inward drift while approaching.
+  local boss_ring = (warp_settings.floor.levels[level] or 6) + (warp_settings.minimap.boss_reveal or 340)
+  if boss_ring > radius then radius = boss_ring end
   local center = env.translate_surface_position(surface_name, {x = 0, y = 0})
   force.chart(surface, {
     {center.x - radius, center.y - radius},

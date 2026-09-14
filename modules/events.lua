@@ -9,6 +9,7 @@
 --   warptorio-planet-chosen {planet, index}
 --   warptorio-wave-spawned  {index, amount, boss, quality, surface}
 --   warptorio-boss-spawned  {index, count, quality, surface}
+--   warptorio-boss-died     {unit_number, index, quality, surface}
 --   warptorio-game-over     {surface, index}
 --   warptorio-game-win      {index, factory_level}
 

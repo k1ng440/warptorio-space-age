@@ -813,6 +813,7 @@ for _, name in ipairs({
   shared.events.planet_chosen,
   shared.events.wave_spawned,
   shared.events.boss_spawned,
+  shared.events.boss_died,
   shared.events.game_over,
   shared.events.game_win,
 }) do

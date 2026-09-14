@@ -1036,6 +1036,11 @@ local function update_ground_platform(e)
       level
     )
   end
+  -- Re-chart after a real platform resize so the bigger boss ring is revealed
+  -- (the initial warp-time chart may use the previous, smaller level).
+  if mode ~= "repair" then
+    minimap.chart(dest)
+  end
 end
 
 local function create_asteroids(amount, surface)
@@ -1194,6 +1199,7 @@ local function replace_with_high_quality(old_entity, strquality)
 	-- Quality replacement destroys the old entity, which unregisters it as a
 	-- boss; carry the registration over so the replacement still drops loot.
 	if boss_data then
+		boss_system.scale_health(new_entity)
 		boss_system.register(new_entity, boss_data.quality)
 	end
 
@@ -1247,6 +1253,97 @@ local function replace_common(entity)
    end
 end
 
+-- Spawn the boss component of a wave on the current warp zone: decide how
+-- many bosses are due (linear wave/warp count), build the per-planet weighted
+-- boss pool (maf-boss-* variants belong to their home planet) and raise the
+-- boss_spawned event. Shared by the natural wave cadence (check_wave) and the
+-- warpcheat "Spawn boss wave" button.
+local function spawn_boss_wave(biter_index, quality)
+   -- Linear count: one boss per 10 waves plus an extra every 20 warps,
+   -- no more random-on-random quadratic explosion.
+   local wave_number = storage.warptorio.wave_index + 1
+   local boss_count = math.min(warp_settings.biter.max_bosses,
+     math.ceil(wave_number / 10)
+     + math.floor((storage.warporio.index or 0) / warp_settings.biter.boss_warp_count_every))
+   -- Cap the ones on the field at once instead of letting them pile up
+   -- beyond max_bosses. Skipped during the final research so the endgame
+   -- boss grind behaves exactly as before.
+   if not technology_check() then
+      boss_count = math.max(0, math.min(boss_count, warp_settings.biter.max_bosses - boss_system.alive_boss_count()))
+   end
+   -- Modded boss variants (maf-boss-*) belong to their home planet. Bosses
+   -- from another planet are excluded unless listed in boss_rare_planets,
+   -- in which case they spawn with the given reduced weight.
+   local surface_name = storage.warptorio.surface_name
+   local boss_cfg = warp_settings.biter.entity_type or {}
+   local boss_planet_map = boss_cfg.boss_planet or {}
+   local boss_rare_map = boss_cfg.boss_rare_planets or {}
+   local boss_weight_map = boss_cfg.boss_weights or warp_settings.biter.boss_weights or {}
+   local tier = warp_settings.biter.entity_type and warp_settings.biter.entity_type["boss"]
+   if tier then tier = tier[biter_index] end
+   local boss_pool = {}
+   local boss_weight_total = 0
+   if tier then
+      for _, boss_name in ipairs(tier) do
+         local prefix, home = nil, nil
+         for p, planet in pairs(boss_planet_map) do
+            if boss_name:sub(1, #p) == p then prefix, home = p, planet end
+         end
+         local weight = 1
+         if prefix then
+            if home == surface_name then
+               weight = 1
+            else
+               local rare = boss_rare_map[prefix]
+               if rare then
+                  weight = rare[surface_name] or rare.default
+               else
+                  weight = nil
+               end
+            end
+         end
+         -- Variant-level rarity: multiply by the most specific matching prefix.
+         if weight then
+            for pw, w in pairs(boss_weight_map) do
+               if boss_name:sub(1, #pw) == pw then
+                  weight = weight * w
+                  break
+               end
+            end
+         end
+         if weight and weight > 0 then
+            boss_weight_total = boss_weight_total + weight
+            table.insert(boss_pool, {name = boss_name, weight = weight})
+         end
+      end
+      local function pick_boss()
+         if #boss_pool == 0 then return nil end
+         local r = math.random() * boss_weight_total
+         for _, entry in ipairs(boss_pool) do
+            r = r - entry.weight
+            if r <= 0 then return entry.name end
+         end
+         return boss_pool[#boss_pool].name
+      end
+      for _=1,boss_count do
+          local biter_type = pick_boss()
+          if not biter_type then break end
+          if string.match(biter_type, "demolisher") then
+            boss_system.create_angry_boss(biter_type,1,storage.warptorio.warp_zone,quality)
+          else
+            boss_system.create_angry_biters(biter_type,1,storage.warptorio.warp_zone,quality,nil,true)
+          end
+      end
+   end
+   events.raise(shared.events.boss_spawned, {
+      index = storage.warptorio.wave_index,
+      count = boss_count,
+      quality = quality,
+      surface = storage.warptorio.warp_zone,
+   })
+   return boss_count
+end
+
 local function check_wave()
     if not storage.warporio then storage.warporio = {} end
     if not storage.warporio.index then storage.warporio.index = 0 end
@@ -1287,8 +1384,14 @@ local function check_wave()
   if limit <= 0 then
      local wave_index = storage.warptorio.wave_index+1
      local amount = warp_settings.biter.wave_amount*math.floor((wave_index)*warp_settings.biter.wave_increase)
-    for i=1,amount do
-      if technology_check() or spawn_boss then break end
+     -- Boss waves keep a reduced regular flood so the normal evolution tiers
+     -- stay in play past the old "boss-only" cliff.
+     local flood_amount = amount
+     if spawn_boss then
+        flood_amount = math.max(3, math.floor(amount * warp_settings.biter.boss_flood_ratio))
+     end
+    for i=1,flood_amount do
+      if technology_check() then break end
       local biter_group = warp_settings.biter.entity_type["default"]
       if storage.warptorio.surface_name and warp_settings.biter.entity_type[storage.warptorio.surface_name] then
         biter_group = warp_settings.biter.entity_type[storage.warptorio.surface_name]
@@ -1304,67 +1407,11 @@ local function check_wave()
       boss_system.create_angry_biters(biter_type,angry_amount,storage.warptorio.warp_zone,quality)
     end
     if spawn_boss or technology_check() then
-       if storage.warptorio.wave_index == 10 and (not technology_check()) then
+       local spawned = spawn_boss_wave(biter_index, quality)
+       if spawn_boss and (not technology_check()) and spawned > 0 then
           game.print({"warptorio.boss-warning"},{volume_modifier=0})
           game.play_sound({path="boss-spawn"})
        end
-      local max = math.ceil(storage.warptorio.wave_index/10)
-      local max = max < warp_settings.biter.max_bosses and max or warp_settings.biter.max_bosses
-      -- Modded boss variants (maf-boss-*) belong to their home planet. Bosses
-      -- from another planet are excluded unless listed in boss_rare_planets,
-      -- in which case they spawn with the given reduced weight.
-      local surface_name = storage.warptorio.surface_name
-      local boss_planet_map = warp_settings.biter.boss_planet or {}
-      local boss_rare_map = warp_settings.biter.boss_rare_planets or {}
-      local boss_pool = {}
-      local boss_weight_total = 0
-      for _, boss_name in ipairs(warp_settings.biter.entity_type["boss"][biter_index]) do
-         local prefix, home = nil, nil
-         for p, planet in pairs(boss_planet_map) do
-            if boss_name:sub(1, #p) == p then prefix, home = p, planet end
-         end
-         local weight = 1
-         if prefix then
-            if home == surface_name then
-               weight = 1
-            else
-               local rare = boss_rare_map[prefix]
-               if rare then
-                  weight = rare[surface_name] or rare.default
-               else
-                  weight = nil
-               end
-            end
-         end
-         if weight and weight > 0 then
-            boss_weight_total = boss_weight_total + weight
-            table.insert(boss_pool, {name = boss_name, weight = weight})
-         end
-      end
-      local function pick_boss()
-         if #boss_pool == 0 then return nil end
-         local r = math.random() * boss_weight_total
-         for _, entry in ipairs(boss_pool) do
-            r = r - entry.weight
-            if r <= 0 then return entry.name end
-         end
-         return boss_pool[#boss_pool].name
-      end
-      for _=1,max do
-          local biter_type = pick_boss()
-          if string.match(biter_type, "demolisher") then
-            boss_system.create_angry_boss(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality)
-          else
-            boss_system.create_angry_biters(biter_type,math.random(1,max),storage.warptorio.warp_zone,quality,nil,true)
-          end
-          if not technology_check() then break end
-      end
-      events.raise(shared.events.boss_spawned, {
-         index = storage.warptorio.wave_index,
-         count = max,
-         quality = quality,
-         surface = storage.warptorio.warp_zone,
-      })
     end
     storage.warptorio.wave_index = storage.warptorio.wave_index + 1
     events.raise(shared.events.wave_spawned, {
@@ -2148,6 +2195,9 @@ if storage.warptorio.game_over then return end
   if event.tick % 60 == 0 then
     train_code.retry_pending_warps()
   end
+  if event.tick % 10 == 0 then
+    boss_system.update()
+  end
   train_code.on_tick(event.tick)
   for i,v in ipairs(warp_settings.blocked_planets) do
     if v == storage.warptorio.surface_name and technology_check() then
@@ -2815,6 +2865,16 @@ warpcheat.init({
   end,
   platform_code = platform_code,
   teleporter_visualize = teleporter_visualize,
+  spawn_boss_wave = function()
+    if not storage.warptorio or not storage.warptorio.warp_zone then return 0 end
+    if not game.surfaces[storage.warptorio.warp_zone] then return 0 end
+    local biter_index = 1
+    local evolution = game.forces["enemy"].get_evolution_factor(storage.warptorio.warp_zone)
+    for i, v in ipairs(warp_settings.biter.tresholds) do
+      if v < evolution then biter_index = i end
+    end
+    return spawn_boss_wave(biter_index, choose_quality(storage.warporio.index or 0))
+  end,
 })
 end
 

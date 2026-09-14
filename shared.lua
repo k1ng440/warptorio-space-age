@@ -85,6 +85,7 @@ shared.events = {
   planet_chosen = "warptorio-planet-chosen",
   wave_spawned = "warptorio-wave-spawned",
   boss_spawned = "warptorio-boss-spawned",
+  boss_died = "warptorio-boss-died",
   game_over = "warptorio-game-over",
   game_win = "warptorio-game-win",
 }

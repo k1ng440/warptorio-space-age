@@ -31,3 +31,79 @@ for _, prototypes in pairs(data.raw) do
       prototypes["fulgoran-ruin-attractor"].alert_when_damaged = false
    end
 end
+
+-- Bosses get private, enlarged prototypes so they read as big red dots on the
+-- map (chart dots scale with the entity's collision box, same trick Space Age
+-- uses for pentapods/worms). The set is driven by the boss pools in
+-- internal_settings so vanilla AND 3rd-party bosses (maf-boss-*, ...) get one,
+-- and new pools need no data-stage code. Spawning is script-driven, so the
+-- copy only needs to exist when the base entity does.
+local boss_box_scale = 1.5
+local warp_cfg = require("internal_settings")
+local boss_min_box = warp_cfg.biter.boss_min_box or 1
+-- Uniformly scale a bounding box by boss_box_scale, but never leave it smaller
+-- than boss_min_box in either axis: small-biter bosses (collision ~0.4) must
+-- keep up with pentapod bosses or they render as biter-sized map dots.
+local function boss_box(v)
+  local hx = math.max(math.abs(v[1][1]) or 0, math.abs(v[2][1]) or 0)
+  local hy = math.max(math.abs(v[1][2]) or 0, math.abs(v[2][2]) or 0)
+  local f = boss_box_scale
+  local m = math.max(hx, hy)
+  if m > 0 then
+    local floor = boss_min_box / m
+    if floor > f then f = floor end
+  end
+  return {{v[1][1] * f, v[1][2] * f}, {v[2][1] * f, v[2][2] * f}}
+end
+-- Entity types that can get enlarged boss copies. Only "unit" bosses need it:
+-- pentapods (stompers/strafers) and demolishers already have big collision
+-- boxes and read as big map dots out of the box, so they stay untouched.
+local enemy_types = {"unit"}
+
+local want_boss = {}
+do
+  local biter = warp_cfg.biter
+  local boss_cfg = biter.entity_type or {}
+  -- The boss pool lives under entity_type.boss (sibling of the per-planet
+  -- wave tables), not biter.boss.
+  for _, tier in ipairs(boss_cfg.boss or {}) do
+    for _, name in ipairs(tier) do want_boss[name] = true end
+  end
+  for _, name in ipairs(biter.boss_extra or {}) do want_boss[name] = true end
+  -- Boss tiers expanded per mod at runtime don't exist at data stage, so for
+  -- modded bosses (maf-boss-*) seed the set from the boss_planet /
+  -- boss_rare_planets prefixes by matching live entity names.
+  local prefixes = {}
+  for p in pairs(boss_cfg.boss_planet or {}) do prefixes[p] = true end
+  for p in pairs(boss_cfg.boss_rare_planets or {}) do prefixes[p] = true end
+  for _, type_name in ipairs(enemy_types) do
+    local prototypes = data.raw[type_name] or {}
+    for name in pairs(prototypes) do
+      for p in pairs(prefixes) do
+        if name:sub(1, #p) == p then want_boss[name] = true end
+      end
+    end
+  end
+end
+
+for _, type_name in ipairs(enemy_types) do
+   local prototypes = data.raw[type_name] or {}
+   for name, base in pairs(prototypes) do
+      if want_boss[name] then
+         local boss = table.deepcopy(base)
+         boss.name = name .. "-warptorio-boss"
+         if boss.collision_box then
+            boss.collision_box = boss_box(boss.collision_box)
+         end
+         if boss.selection_box then
+            boss.selection_box = boss_box(boss.selection_box)
+         end
+         boss.map_generator_bounding_box = nil
+         local hp_mult = warp_cfg.biter.boss_health_mult or 1
+         if hp_mult ~= 1 and boss.max_health then
+            boss.max_health = math.floor(boss.max_health * hp_mult)
+         end
+         data:extend{boss}
+      end
+   end
+end

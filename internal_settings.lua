@@ -300,6 +300,13 @@ local local_settings = {
           default = 0.2,
         },
       },
+      -- Per-boss spawn weight multiplier (prefix match, like boss_planet);
+      -- multiply the effective weight so a variant family can be made rarer
+      -- than its siblings. Spitter bosses are weighed down here so they only
+      -- show up as a change of pace instead of dominating the pool.
+      boss_weights = {
+        ["maf-boss-explosive-spitter"] = 0.2,
+      },
     },
     tresholds = {0,0.15,0.5,0.9},
     extra_time_planet = {},
@@ -320,6 +327,8 @@ local local_settings = {
     wave_change_index = 20,
     wave_change_chance = 0.3,
     wave_change_max = 40,
+    wave_ramp = 0.01,
+    wave_change_cap = 0.5,
     wave_amount = settings.startup["warptorio_wave-amount"].value,
     wave_increase = settings.startup["warptorio_wave-increase"].value,
     amount = 5,
@@ -327,7 +336,25 @@ local local_settings = {
     change = settings.startup["warptorio_wave-change"].value,
     min = 15,
     radius = 8,
-    max_bosses = 24,
+    max_bosses = 8,
+    boss_flood_ratio = 0.5,
+    boss_kill_time = 30,
+    boss_health_mult = 3,
+    -- Minimum collision half-size for boss prototypes. Chart dots scale with
+    -- the collision box, so small-biters-based bosses (maf-boss-*, box ~0.4)
+    -- must be blown up to the same footprint as pentapod bosses (~2.5) or they
+    -- stay biter-sized red dots on the map.
+    boss_min_box = 2.5,
+    boss_warp_count_every = 20,
+    -- Exact-name boss units that have no maf-boss-* prefix (planet-agnostic
+    -- biter mods like ArmouredBiters). The runtime block below inserts these
+    -- into the boss tiers when the mod is installed; data-final-fixes and the
+    -- runtime footprints derive the enlarged-prototype set from this list.
+    boss_extra = {
+       "big-armoured-biter",
+       "behemoth-armoured-biter",
+       "leviathan-armoured-biter",
+    },
     evolution = {
        base = 0,
        researches = {
@@ -359,6 +386,9 @@ local local_settings = {
      zoom_step = 1.15,
      zoom_factor_min = 0.05,
      zoom_factor_max = 100,
+     -- Radius beyond the platform centre (in tiles) that M.chart covers,
+     -- ensuring bosses spawn just inside the charted ring.
+     boss_reveal = 340,
   },
   planet_timer = 30,
   stuck_in_space_chance = settings.startup["warptorio_stuck-in-space-chance"].value,
@@ -511,6 +541,14 @@ for name, version in pairs(script.active_mods) do
        end
     end
     --local_settings.biter.max_bosses = 1
+  end
+  -- Armoured "snapper" biters are planet-agnostic; register the heavy
+  -- variants as tier bosses so they show as big red dots on the map.
+  if name == "ArmouredBiters-2_1-update" or name == "ArmouredBiters" then
+    local bosses = local_settings.biter.entity_type["boss"]
+    table.insert(bosses[2], "big-armoured-biter")
+    table.insert(bosses[3], "behemoth-armoured-biter")
+    table.insert(bosses[4], "leviathan-armoured-biter")
   end
   if name == "exotic-space-industries" then
     local_settings.biter.trigger_research = "ei-electricity-age"

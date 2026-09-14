@@ -4,6 +4,8 @@
 local M = {}
 
 local warp_settings = require("internal_settings")
+local shared = require("shared")
+local events = require("modules.events")
 
 local deps = {}
 
@@ -12,19 +14,72 @@ local function ensure_boss_registry()
   return storage.warptorio.bosses
 end
 
-local module_pool_cache = nil
+local function boss_tag_force()
+  return game.forces.player
+end
+
+-- Map (chart) tags chase boss units so they read as boss-sized skull markers
+-- instead of the tiny red dots normal enemies get.
+local function update_boss_tag(entity, boss)
+  if boss and boss.tag and boss.tag.valid then
+    boss.tag.position = {x = entity.position.x, y = entity.position.y}
+    return
+  end
+  if entity and entity.valid then
+    local ok, tag = pcall(function()
+      return boss_tag_force().add_chart_tag(entity.surface, {
+        position = {x = entity.position.x, y = entity.position.y},
+        icon = {type = "virtual", name = "signal-skull"},
+      })
+    end)
+    if ok and tag then boss.tag = tag end
+  end
+end
+
+local function destroy_boss_tag(boss)
+  if boss and boss.tag and boss.tag.valid then
+    boss.tag.destroy()
+    boss.tag = nil
+  end
+end
+
+local function register_boss_entity(entity, quality)
+  if not entity or not entity.valid then return end
+  local boss = ensure_boss_registry()[entity.unit_number]
+  if not boss then
+    boss = {}
+    ensure_boss_registry()[entity.unit_number] = boss
+  end
+  boss.quality = quality
+  update_boss_tag(entity, boss)
+  return boss
+end
+
+-- Bosses get chunky outright: HP scaling is baked into the enlarged boss
+-- prototypes (data-final-fixes) because LuaEntity::max_health is read-only at
+-- runtime, especially for quality units. This only tops the current health up
+-- to the (already quality-scaled) max.
+function M.scale_health(entity)
+  if entity and entity.valid and entity.max_health then
+    entity.health = entity.max_health
+  end
+end
+
+local module_pool_cache = {}
+-- tier_max is 1..5 (normal/uncommon/rare/epic/legendary); each bucket holds
+-- every module whose tier is <= tier_max, so higher tiers only widen the pool.
 local function get_module_pool(tier_max)
-  if not module_pool_cache then
-    module_pool_cache = {normal = {}, uncommon = {}, rare = {}}
+  if not module_pool_cache[tier_max] then
+    local pool = {}
     for name, proto in pairs(prototypes.item) do
       if proto.type == "module" then
         local tier = tonumber(name:match("-(%d+)$")) or 1
-        local bucket = tier <= 1 and "normal" or (tier == 2 and "uncommon" or "rare")
-        table.insert(module_pool_cache[bucket], name)
+        if tier <= tier_max then table.insert(pool, name) end
       end
     end
+    module_pool_cache[tier_max] = pool
   end
-  return module_pool_cache[tier_max] or module_pool_cache.normal
+  return module_pool_cache[tier_max]
 end
 
 local function get_science_pool()
@@ -45,45 +100,114 @@ local function drop_boss_loot(entity, quality)
   if math.random() > chance then return end
   local max_count = settings.global["warptorio_boss-loot-count"].value
   if max_count < 1 then return end
+  -- Loot tier keeps climbing with warp index instead of capping at rare.
   local warp_index = (storage.warporio and storage.warporio.index) or 1
-  local tier_max = warp_index <= 2 and "normal" or (warp_index <= 4 and "uncommon" or "rare")
+  local tier_max = warp_index <= 2 and 1
+    or (warp_index <= 4 and 2
+    or (warp_index <= 8 and 3
+    or (warp_index <= 15 and 4
+    or 5)))
   local surface = entity.surface
   local pos = entity.position
-  local count = math.random(0, max_count)
-  for _ = 1, count do
-    local name
-    if math.random(2) == 1 then
-      local packs = get_science_pool()
-      if #packs > 0 then name = packs[math.random(#packs)] end
-    end
-    if not name then
-      local pool = get_module_pool(tier_max)
-      if #pool > 0 then name = pool[math.random(#pool)] end
-    end
-    if name then
-      surface.spill_item_stack{
-        position = pos,
-        stack = {name = name, count = 1, quality = quality},
-        enable_looted = false,
-        force = "player",
-        allow_belts = false,
-      }
-    end
+  -- Guaranteed drop on a successful roll; grows slowly with progression.
+  local count = math.max(1, math.min(max_count, 1 + math.floor(warp_index / 10)))
+  local name
+  if math.random(2) == 1 then
+    local packs = get_science_pool()
+    if #packs > 0 then name = packs[math.random(#packs)] end
+  end
+  if not name then
+    local pool = get_module_pool(tier_max)
+    if #pool > 0 then name = pool[math.random(#pool)] end
+  end
+  if name then
+    surface.spill_item_stack{
+      position = pos,
+      stack = {name = name, count = count, quality = quality},
+      enable_looted = false,
+      force = "player",
+      allow_belts = false,
+    }
   end
 end
 
+local function boss_chance_for_wave(wave)
+  local cfg = warp_settings.biter
+  -- First boss wave at 10, then only every 10th wave guarantees a boss.
+  -- Every even wave from 10 was putting the warning (and loot) on permanent
+  -- repeat once wave time hits its 15s floor.
+  if wave >= 10 and wave % 10 == 0 then return 1 end
+  if wave > cfg.wave_change_max then
+    -- No cliff after wave 40: odd waves keep ramping toward the configured
+    -- cap, not all the way to a guaranteed boss.
+    return math.min(cfg.wave_change_cap, cfg.wave_change_chance + (wave - cfg.wave_change_max) * cfg.wave_ramp)
+  end
+  if wave > cfg.wave_change_index then
+    return cfg.wave_change_chance
+  end
+  return 0
+end
+
 function M.spawn_boss_check()
-   if storage.warptorio.wave_index % 10 == 0 then
-      return true
-   end
-   if storage.warptorio.wave_index > warp_settings.biter.wave_change_max then
-      return true
-   end
-   if storage.warptorio.wave_index > warp_settings.biter.wave_change_index then
-      local rand = math.random()
-      if rand > warp_settings.biter.wave_change_chance then return true end
-   end
-   return false
+  -- Called before the wave counter is incremented, so the wave being spawned
+  -- is counter+1 (this also keeps wave 1 from matching "% 10 == 0").
+  local wave = (storage.warptorio.wave_index or 0) + 1
+  return math.random() < boss_chance_for_wave(wave)
+end
+
+-- Number of bosses still alive, used to cap concurrent bosses from the calm
+-- every-other-wave cadence (registry is swept once per second by M.update).
+function M.alive_boss_count()
+  if not storage.warptorio or not storage.warptorio.bosses then return 0 end
+  local count = 0
+  for unit_number in pairs(storage.warptorio.bosses) do
+    local entity = game.get_entity_by_unit_number(unit_number)
+    if entity and entity.valid then count = count + 1 end
+  end
+  return count
+end
+
+-- Vanilla and 3rd-party bosses get enlarged private prototypes (bigger
+-- collision box -> bigger red dot on the map). The candidate set comes from
+-- the same internal_settings pools data-final-fixes uses, so both stay in sync.
+local boss_footprint_names
+local function ensure_boss_footprint_names()
+  if not boss_footprint_names then
+    boss_footprint_names = {}
+    local biter = warp_settings.biter
+    local boss_cfg = biter.entity_type or {}
+    for _, tier in ipairs(boss_cfg.boss or {}) do
+      for _, name in ipairs(tier) do boss_footprint_names[name] = true end
+    end
+    for _, name in ipairs(biter.boss_extra or {}) do boss_footprint_names[name] = true end
+    for name in pairs(boss_cfg.boss_planet or {}) do boss_footprint_names[name] = true end
+    for name in pairs(boss_cfg.boss_rare_planets or {}) do boss_footprint_names[name] = true end
+  end
+  return boss_footprint_names
+end
+-- boss_planet / boss_rare_planets store PREFIXES (maf-boss-explosive matches
+-- maf-boss-explosive-biter-1), so a name hits the footprint set on an exact
+-- match OR by prefix, mirroring the data-stage want_boss seeding.
+local function boss_footprint(name)
+  local names = ensure_boss_footprint_names()
+  if names[name] then return true end
+  for prefix in pairs(names) do
+    if name:sub(1, #prefix) == prefix then return true end
+  end
+  return false
+end
+local boss_prototype_cache = {}
+function M.boss_prototype(name)
+  local custom = boss_prototype_cache[name]
+  if custom == nil then
+    custom = false
+    if boss_footprint(name) then
+      local expanded = name .. "-warptorio-boss"
+      custom = prototypes.entity[expanded] and expanded or false
+    end
+    boss_prototype_cache[name] = custom
+  end
+  return custom or name
 end
 
 function M.create_angry_biters(biter_type,number,surface,quality,target,is_boss)
@@ -94,7 +218,6 @@ function M.create_angry_biters(biter_type,number,surface,quality,target,is_boss)
    end
    local quality = quality or "normal"
    if storage.warptorio.void then return end
-   local surface_player_list = {}
 
    -- Create attack force for platform
    local angle = math.random(0,2*math.pi)
@@ -125,17 +248,21 @@ function M.create_angry_biters(biter_type,number,surface,quality,target,is_boss)
 
    for j = 1,number do
 
-      local pos = game.surfaces[surface].find_non_colliding_position(biter_type, {x,y}, 0, 2, false) or {x,y}
+      local spawn_type = is_boss and M.boss_prototype(biter_type) or biter_type
+      local pos = game.surfaces[surface].find_non_colliding_position(spawn_type, {x,y}, 0, 2, false) or {x,y}
 
       local angry_bitter = game.surfaces[surface].create_entity{
-         name = biter_type,
+         name = spawn_type,
          position = pos,
+         direction = facing,
          quality = quality}
-      if is_boss and angry_bitter and angry_bitter.valid then
-         ensure_boss_registry()[angry_bitter.unit_number] = {quality = quality}
+      if angry_bitter and angry_bitter.valid then
+         if is_boss then
+            M.scale_health(angry_bitter)
+            register_boss_entity(angry_bitter, quality)
+         end
+         unit_group.add_member(angry_bitter)
       end
-      --angry_bitter.autopilot_destination = k.position
-      unit_group.add_member(angry_bitter)
    end
 
    unit_group.set_command({
@@ -153,13 +280,6 @@ function M.create_angry_boss(biter_type,number,surface,quality,target)
   local target = target or {x=0,y=0}
   local quality = quality or "normal"
   if storage.warptorio.void then return end
-        local surface_player_list = {}
-  for i,v in pairs(game.players) do
-    -- Add players to the list
-    if v.is_player() and v.connected and v.character and v.character.surface.name == surface then
-      table.insert(surface_player_list,v.character)
-    end
-  end
 
   -- Create attack force for platform
   local angle = math.random(0,2*math.pi)
@@ -168,56 +288,81 @@ function M.create_angry_boss(biter_type,number,surface,quality,target)
   local range = 125
   local offset = deps.get_surface_offset(surface)
   local center = {x = offset.x + (target.x or 0), y = offset.y + (target.y or 0)}
-   local x = center.x + math.cos(angle)*(dist+range)
-   local y = center.y + math.sin(angle)*(dist+range)
-   local dx = center.x - x
-   local dy = center.y - y
-   local four_directions = {
-      north = defines.direction.north,
-      east  = defines.direction.east,
-      south = defines.direction.south,
-      west  = defines.direction.west,
-   }
-   local facing
-   if math.abs(dx) > math.abs(dy) then
-      facing = dx > 0 and four_directions.east or four_directions.west
-   else
-      facing = dy > 0 and four_directions.south or four_directions.north
-   end
+  local x = center.x + math.cos(angle)*(dist+range)
+  local y = center.y + math.sin(angle)*(dist+range)
+  local dx = center.x - x
+  local dy = center.y - y
+  local four_directions = {
+     north = defines.direction.north,
+     east  = defines.direction.east,
+     south = defines.direction.south,
+     west  = defines.direction.west,
+  }
+  local facing
+  if math.abs(dx) > math.abs(dy) then
+     facing = dx > 0 and four_directions.east or four_directions.west
+  else
+     facing = dy > 0 and four_directions.south or four_directions.north
+  end
 
-        for j = 1,number do
-          local x = center.x + math.cos(angle)*(dist+range)
-          local y = center.y + math.sin(angle)*(dist+range)
-                local pos = game.surfaces[surface].find_non_colliding_position(biter_type, {x,y}, 0, 2, false) or {x,y}
+  local spawned = 0
+  for j = 1,number do
+    local spawn_type = M.boss_prototype(biter_type)
+    local pos = game.surfaces[surface].find_non_colliding_position(spawn_type, {x,y}, 0, 2, false) or {x,y}
+    local angry_bitter = game.surfaces[surface].create_entity{
+       name = spawn_type,
+       position = pos,
+       direction = facing,
+       quality = quality}
+    if angry_bitter and angry_bitter.valid then
+      M.scale_health(angry_bitter)
+      register_boss_entity(angry_bitter, quality)
+      spawned = spawned + 1
+    end
+  end
 
-                local angry_bitter = game.surfaces[surface].create_entity{
-                   name = biter_type,
-                   position = pos,
-                   direction=facing,
-                   quality=quality }
-                if angry_bitter and angry_bitter.valid then
-                  ensure_boss_registry()[angry_bitter.unit_number] = {quality = quality}
-                end
-        end
-
+  -- Charge the platform center (not a point offset past it).
   game.surfaces[surface].set_multi_command{
     command={
       type=defines.command.attack_area,
-      destination={
-        x=center.x + math.cos(angle)*dist,
-        y=center.y + math.sin(angle)*(dist+range)
-      },
+      destination={x=center.x, y=center.y},
       radius=dist,
     },
-    unit_count=range
+    unit_count=spawned
   }
 end
 
 -- Register an existing entity as boss (e.g. after a quality replacement
 -- recreates it under a new unit number).
 function M.register(entity, quality)
-  if entity and entity.valid then
-    ensure_boss_registry()[entity.unit_number] = {quality = quality}
+  register_boss_entity(entity, quality)
+end
+
+-- Number of boss units currently alive on any surface. The registry is swept
+-- once per second by M.update, and validity is double-checked for safety.
+function M.alive_count()
+  if not storage.warptorio or not storage.warptorio.bosses then return 0 end
+  local count = 0
+  for unit_number in pairs(storage.warptorio.bosses) do
+    local e = game.get_entity_by_unit_number(unit_number)
+    if e and e.valid then count = count + 1 end
+  end
+  return count
+end
+
+-- Move boss chart tags and sweep registry entries whose unit died without
+-- firing on_entity_died. Cheap enough to call once per second, not per tick.
+function M.update()
+  if not storage.warptorio or not storage.warptorio.bosses then return end
+  local bosses = storage.warptorio.bosses
+  for unit_number, boss in pairs(bosses) do
+    local entity = game.get_entity_by_unit_number(unit_number)
+    if not entity or not entity.valid then
+      destroy_boss_tag(boss)
+      bosses[unit_number] = nil
+    else
+      update_boss_tag(entity, boss)
+    end
   end
 end
 
@@ -227,14 +372,35 @@ function M.on_boss_died(entity)
   local boss = storage.warptorio.bosses[entity.unit_number]
   if boss then
     storage.warptorio.bosses[entity.unit_number] = nil
+    destroy_boss_tag(boss)
     drop_boss_loot(entity, boss.quality)
+    events.raise(shared.events.boss_died, {
+      unit_number = entity.unit_number,
+      surface = entity.surface and entity.surface.name or nil,
+      quality = boss.quality,
+      index = (storage.warporio and storage.warporio.index) or 0,
+    })
+    -- Taking down a boss shortens the wait until the next push.
+    if storage.warptorio.wave_time then
+      storage.warptorio.wave_time = math.max(warp_settings.biter.min, storage.warptorio.wave_time - warp_settings.biter.boss_kill_time)
+    end
   end
 end
 
 -- Called from script_raised_destroy; removes stale registry entries.
 function M.unregister(entity)
-  if storage.warptorio and storage.warptorio.bosses and entity.unit_number then
-    storage.warptorio.bosses[entity.unit_number] = nil
+  if storage.warptorio and storage.warptorio.bosses and entity and entity.unit_number then
+    local boss = storage.warptorio.bosses[entity.unit_number]
+    if boss then
+      destroy_boss_tag(boss)
+      storage.warptorio.bosses[entity.unit_number] = nil
+      events.raise(shared.events.boss_died, {
+        unit_number = entity.unit_number,
+        surface = entity.surface and entity.surface.name or nil,
+        quality = boss.quality,
+        index = (storage.warporio and storage.warporio.index) or 0,
+      })
+    end
   end
 end
 

@@ -62,6 +62,7 @@ Available events and their payloads:
 | `warptorio-planet-chosen` | next planet announced | `planet`, `index` |
 | `warptorio-wave-spawned` | enemy wave spawned | `index`, `amount`, `boss`, `quality`, `surface` |
 | `warptorio-boss-spawned` | boss wave spawned | `index`, `count`, `quality`, `surface` |
+| `warptorio-boss-died` | boss unit removed | `unit_number`, `index`, `quality`, `surface` |
 | `warptorio-game-over` | capacitor destroyed | `surface`, `index` |
 | `warptorio-game-win` | final research complete | `index`, `factory_level` |
 

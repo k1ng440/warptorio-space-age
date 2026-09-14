@@ -22,6 +22,9 @@ local function warp_gui(player)
    if not storage.warptorio.gui then storage.warptorio.gui = {} end
 
    -- clear old gui if it exists
+   if screen_element[warp_settings.gui.holder] then
+      screen_element[warp_settings.gui.holder].destroy()
+   end
    local elements = {
       "time_passed_label",
       "number_of_warps_label",
@@ -60,6 +63,13 @@ function gui_state.update_label(label_name,text,is_label)
    for k, v in pairs(game.players) do
       if not v.gui.top[gui_parent] then
          warp_gui(v)
+      elseif not v.gui.top[gui_parent][label_name] then
+         -- Frame predates this label (e.g. mod updated while running): rebuild
+         -- the whole frame so the new element exists before indexing into it,
+         -- and drop the change-detection cache so the fresh frame gets real values.
+         warp_gui(v)
+         storage.warptorio.gui_cache = storage.warptorio.gui_cache or {}
+         for k in pairs(storage.warptorio.gui_cache) do storage.warptorio.gui_cache[k] = nil end
       end
       local vl = warp_settings.gui.value
       local ll = warp_settings.gui.label
