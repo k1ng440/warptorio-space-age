@@ -161,6 +161,7 @@ local function warpcheat_gui(player)
   action_button(waveflow, "warpcheat-wave-pause",
     storage.warptorio.wave_paused and "Resume waves" or "Pause waves")
   action_button(waveflow, "warpcheat-wave-add", "Wave +1")
+  action_button(left, "warpcheat-wave-boss", "Spawn boss wave", "red_button")
 
   -- RIGHT column: platform + research + container
   local right = columns.add{type="flow", direction="vertical"}
@@ -275,6 +276,17 @@ function module.handle_click(event)
     storage.warptorio.wave_index = (storage.warptorio.wave_index or 0) + 1
     env.update_label("wave-amount", storage.warptorio.wave_index)
     player.print("Wave count increased to " .. storage.warptorio.wave_index)
+  elseif name == "warpcheat-wave-boss" then
+    if env.spawn_boss_wave then
+      local count = env.spawn_boss_wave()
+      if count and count > 0 then
+        player.print("Boss wave spawned (" .. count .. " boss" .. (count == 1 and "" or "es") .. ")")
+      else
+        player.print("No bosses spawned - empty boss pool or not on a planet")
+      end
+    else
+      player.print("Boss spawn not available")
+    end
   elseif name == "warpcheat-tp-factory" then
     if storage.warptorio.factory_level > 0 then
       local player_pos = game.surfaces["factory"].find_non_colliding_position("character", {0,0}, 0, 0.5, false)
