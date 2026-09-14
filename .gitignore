@@ -7,6 +7,9 @@ luac.out
 # Linux temp files
 *~
 
+# nix develop result symlink
+result
+
 # luarocks build files
 *.src.rock
 *.zip
