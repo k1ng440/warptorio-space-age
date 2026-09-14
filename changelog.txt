@@ -7,7 +7,7 @@ Date: 2026-09-14
     - Modded boss variants are now planet-bound: maf-boss-* only spawn on their home planet, with
       an optional boss_rare_planets table letting them appear elsewhere at a reduced weight
       (explosive spitters now 0.05 instead of 0.2, so they no longer dominate the pool)
-    - Boss rebalance: max 8 concurrent bosses (was 24), wave flood capped at 50%, boss health x3,
+    - Boss rebalance: max 16 concurrent bosses (was 24), wave flood capped at 50%, boss health x3,
       and boss presence/cadence scales with warp count
     - Bosses now read as big red map dots: bosses get private enlarged prototypes (collision box
       never smaller than pentapod size) with scaled health, and the chart ring reveals the boss
