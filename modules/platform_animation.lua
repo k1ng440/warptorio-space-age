@@ -77,10 +77,12 @@ local function spawn_build_anim(surface, x, y, cx, cy)
   if unknown_anims[name] then
     return nil
   end
-  local ok, anim = pcall(surface.create_entity, surface, {
-    name = name,
-    position = {x = x + 0.5 + anim_offset_x, y = y + 0.5 + anim_offset_y},
-  })
+  local ok, anim = pcall(function()
+    return surface.create_entity{
+      name = name,
+      position = {x = x + 0.5 + anim_offset_x, y = y + 0.5 + anim_offset_y},
+    }
+  end)
   if not ok then
     unknown_anims[name] = true
     return nil
